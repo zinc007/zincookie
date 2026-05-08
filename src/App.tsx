@@ -42,7 +42,11 @@ interface Message {
   content: string;
   time: string;
   isEdited?: boolean;
-  type?: 'text' | 'voice';
+  type?: 'text' | 'voice' | 'transfer';
+  transferData?: {
+    amount: string;
+    remark: string;
+  };
 }
 
 interface BeautyPreset {
@@ -107,6 +111,12 @@ interface ApiSettings {
   baseUrl: string;
   apiKey: string;
   model: string;
+}
+
+interface ApiPreset {
+  id: string;
+  name: string;
+  config: ApiSettings;
 }
 
 // --- 初始数据与常量 ---
@@ -175,6 +185,10 @@ export default function App() {
   const [apiSettings, setApiSettings] = useState<ApiSettings>(() => 
     getSafeStorage('api_settings', { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o' })
   );
+
+  const [apiPresets, setApiPresets] = useState<ApiPreset[]>(() => 
+    getSafeStorage('api_presets', [])
+  );
   
   const [todoColors, setTodoColors] = useState<string[]>(() => 
     getSafeStorage('todo_colors', ['#18181b', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'])
@@ -202,6 +216,8 @@ export default function App() {
   );
 
   const [isAddCharModalOpen, setIsAddCharModalOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferState, setTransferState] = useState({ amount: '', remark: '' });
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
@@ -224,6 +240,7 @@ export default function App() {
       localStorage.setItem('beauty_presets', JSON.stringify(beautyPresets));
       localStorage.setItem('app_messages', JSON.stringify(messages));
       localStorage.setItem('todo_colors', JSON.stringify(todoColors));
+      localStorage.setItem('api_presets', JSON.stringify(apiPresets));
     } catch (e) {
       if (e instanceof Error && e.name === 'QuotaExceededError') {
         console.warn('Storage quota exceeded, failed to save some data.');
@@ -437,7 +454,18 @@ export default function App() {
                 <div 
                   key={char.id} 
                   onClick={() => setSelectedChat(char)}
-                  className="flex items-center gap-4 p-4 hover:bg-zinc-50 rounded-[2rem] transition-all cursor-pointer group active:scale-95"
+                  onPointerDown={(e) => {
+                    const timer = setTimeout(() => {
+                      if (confirm(`确定要移除与 ${char.name} 的对话记录吗？`)) {
+                        setCharacters(prev => prev.filter(c => c.id !== char.id));
+                        // 同时清除该角色的消息 (可选，根据用户习惯)
+                        // setMessages(messages.filter(m => !isRelatedToChar(m, char.id))); 
+                      }
+                    }, 800);
+                    e.currentTarget.addEventListener('pointerup', () => clearTimeout(timer), { once: true });
+                    e.currentTarget.addEventListener('pointermove', () => clearTimeout(timer), { once: true });
+                  }}
+                  className="flex items-center gap-4 p-4 hover:bg-zinc-50 rounded-[2rem] transition-all cursor-pointer group active:scale-95 touch-none"
                 >
                   <div className="w-14 h-14 rounded-2xl bg-zinc-900 flex items-center justify-center text-white text-xl font-bold overflow-hidden shadow-lg shadow-zinc-100">
                     {char.avatar ? <img src={char.avatar} className="w-full h-full object-cover" /> : char.name[0]}
@@ -700,6 +728,26 @@ export default function App() {
                         style={bubbleStyle}
                         glassClass={glassClass}
                         transcribedText={msg.content}
+                        avatar={(
+                          <div 
+                            className={`rounded-xl bg-zinc-900 border border-zinc-50 overflow-hidden shrink-0 shadow-sm ${msg.role === 'user' ? 'ml-2' : 'mr-2'}`}
+                            style={{ width: settings.avatarSize || 36, height: settings.avatarSize || 36 }}
+                          >
+                            {msg.role === 'assistant' ? (
+                              (settings.charAvatar || selectedChat.avatar ? <img src={settings.charAvatar || selectedChat.avatar} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-white">{selectedChat.name[0]}</div>)
+                            ) : (
+                              (settings.userAvatar || userProfile.avatar ? <img src={settings.userAvatar || userProfile.avatar} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><User size={14} className="text-zinc-400" /></div>)
+                            )}
+                          </div>
+                        )}
+                      />
+                    ) : msg.type === 'transfer' ? (
+                      <TransferCard 
+                        role={msg.role}
+                        amount={msg.transferData?.amount || '0.00'}
+                        remark={msg.transferData?.remark || '无备注'}
+                        style={bubbleStyle}
+                        glassClass={glassClass}
                       />
                     ) : (
                       <div 
@@ -711,7 +759,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {msg.role === 'user' && (
+                    {msg.role === 'user' && msg.type !== 'voice' && (
                       <div 
                         className="rounded-xl bg-zinc-100 border border-zinc-50 overflow-hidden shrink-0 shadow-sm"
                         style={{ width: settings.avatarSize || 36, height: settings.avatarSize || 36 }}
@@ -782,7 +830,7 @@ export default function App() {
                   animate={{ y: 0, opacity: 1 }}
                   className="grid grid-cols-4 gap-4 p-6 bg-zinc-50 rounded-[2rem] border border-gray-100"
                 >
-                  <PlusMenuItem icon={CreditCard} label="转账" onClick={() => alert('模拟转账系统已启动')} />
+                  <PlusMenuItem icon={CreditCard} label="转账" onClick={() => setIsTransferModalOpen(true)} />
                   <PlusMenuItem icon={Mic} label="语音" onClick={() => setIsVoiceMode(!isVoiceMode)} />
                   <PlusMenuItem icon={Smile} label="表情" onClick={() => alert('在这里选择表情包')} />
                   <PlusMenuItem icon={ImageIcon} label="图库" onClick={() => alert('从本地选择图片')} />
@@ -825,6 +873,27 @@ export default function App() {
             setIsAddCharModalOpen(false);
           }}
           ImageUploader={ImageUploader}
+        />
+
+        <TransferModal 
+          isOpen={isTransferModalOpen}
+          onClose={() => setIsTransferModalOpen(false)}
+          onConfirm={(amount: string, remark: string) => {
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const transferMsg: Message = {
+              id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+              role: 'user',
+              content: `转账: ${amount}`,
+              time,
+              type: 'transfer',
+              transferData: { amount, remark }
+            };
+            setMessages(prev => [...prev, transferMsg]);
+            setIsTransferModalOpen(false);
+            setTransferState({ amount: '', remark: '' });
+          }}
+          state={transferState}
+          setState={setTransferState}
         />
 
         {isSidebarOpen && (
@@ -949,6 +1018,45 @@ export default function App() {
                       <div className="space-y-6 p-2">
                         <h3 className="font-black text-xs tracking-widest uppercase">API Endpoint Node</h3>
                         <div className="space-y-4">
+                          <label className="block">
+                            <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">配置名称 (Preset Name)</span>
+                            <div className="flex gap-2 mt-1">
+                              <input 
+                                className="flex-1 bg-zinc-50 border-none rounded-xl p-4 text-xs" 
+                                placeholder="未命名配置"
+                                id="api-preset-name"
+                              />
+                              <button 
+                                onClick={() => {
+                                  const el = document.getElementById('api-preset-name') as HTMLInputElement;
+                                  const name = el.value || '未命名配置';
+                                  setApiPresets(prev => [...prev, { id: Date.now().toString(), name, config: { ...apiSettings } }]);
+                                  el.value = '';
+                                  alert('配置已保存');
+                                }}
+                                className="bg-zinc-900 text-white px-4 rounded-xl text-[10px] font-black uppercase tracking-widest"
+                              >
+                                Save
+                              </button>
+                            </div>
+                          </label>
+
+                          <div className="space-y-2 max-h-32 overflow-y-auto">
+                            {apiPresets.map(p => (
+                              <div key={p.id} className="flex items-center justify-between p-3 bg-zinc-50 rounded-xl hover:bg-zinc-100 transition-all group">
+                                <div className="flex-1 cursor-pointer" onClick={() => setApiSettings(p.config)}>
+                                  <span className="text-xs font-bold text-zinc-700">{p.name}</span>
+                                  <div className="text-[8px] text-zinc-300 truncate w-32">{p.config.baseUrl}</div>
+                                </div>
+                                <button onClick={() => setApiPresets(apiPresets.filter(i => i.id !== p.id))} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1">
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="border-t border-zinc-100 pt-4" />
+
                           <label className="block">
                             <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">中转地址 Base URL</span>
                             <input 
@@ -1389,45 +1497,121 @@ function AddCharacterModal({ isOpen, onClose, onSave, ImageUploader }: any) {
   );
 }
 
-function VoiceBubble({ role, duration, style, glassClass, transcribedText }: any) {
+function VoiceBubble({ role, duration, style, glassClass, transcribedText, avatar }: any) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [showTranscription, setShowTranscription] = useState(false);
   
   return (
-    <div className="flex flex-col gap-1 items-end max-w-[80%]">
-      <div 
-        onClick={() => {
-          setIsAnimating(true);
-          setShowTranscription(!showTranscription);
-          setTimeout(() => setIsAnimating(false), 2000);
-        }}
-        className={`relative cursor-pointer min-w-[120px] p-4 flex items-center gap-3 active:scale-95 transition-all ${role === 'user' ? (style.backgroundColor ? '' : 'bg-zinc-900 text-white') : (style.backgroundColor ? '' : 'bg-white text-zinc-800 border border-gray-100 shadow-xl shadow-zinc-100/50')} rounded-3xl ${role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} ${glassClass}`}
-        style={style}
-      >
-        <Mic size={16} className={isAnimating ? 'animate-pulse' : ''} />
-        <div className="flex gap-0.5 items-end h-4 flex-1">
-          {[...Array(12)].map((_, i) => (
-            <motion.div 
-              key={i}
-              animate={{ height: isAnimating ? [4, Math.random() * 16 + 4, 4] : (Math.random() * 8 + 4) }}
-              transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.05 }}
-              className={`w-1 rounded-full ${role === 'user' ? 'bg-white/40' : 'bg-zinc-200'}`}
-            />
-          ))}
+    <div className={`flex items-start gap-2 ${role === 'user' ? 'flex-row-reverse' : 'flex-row'} max-w-[85%]`}>
+      {avatar}
+      <div className={`flex flex-col gap-1 ${role === 'user' ? 'items-end' : 'items-start'} max-w-full`}>
+        <div 
+          onClick={() => {
+            setIsAnimating(true);
+            setShowTranscription(!showTranscription);
+            setTimeout(() => setIsAnimating(false), 2000);
+          }}
+          className={`relative cursor-pointer min-w-[120px] p-4 flex items-center gap-3 active:scale-95 transition-all ${role === 'user' ? (style.backgroundColor ? '' : 'bg-zinc-900 text-white') : (style.backgroundColor ? '' : 'bg-white text-zinc-800 border border-gray-100 shadow-xl shadow-zinc-100/50')} rounded-3xl ${role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} ${glassClass}`}
+          style={style}
+        >
+          <Mic size={16} className={isAnimating ? 'animate-pulse' : ''} />
+          <div className="flex gap-0.5 items-end h-4 flex-1">
+            {[...Array(12)].map((_, i) => (
+              <motion.div 
+                key={i}
+                animate={{ height: isAnimating ? [4, Math.random() * 16 + 4, 4] : (Math.random() * 8 + 4) }}
+                transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.05 }}
+                className={`w-1 rounded-full ${role === 'user' ? 'bg-white/40' : 'bg-zinc-200'}`}
+              />
+            ))}
+          </div>
+          <span className="text-[10px] font-bold font-mono opacity-60">{duration}"</span>
         </div>
-        <span className="text-[10px] font-bold font-mono opacity-60">{duration}"</span>
+        <AnimatePresence>
+          {showTranscription && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className={`text-[10px] p-2 rounded-xl bg-white/50 border border-zinc-100 text-zinc-400 italic shadow-sm mt-1 max-w-full break-words`}
+            >
+              {transcribedText}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-      <AnimatePresence>
-        {showTranscription && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className={`text-[10px] p-2 rounded-xl bg-white/50 border border-zinc-100 text-zinc-400 italic shadow-sm mt-1 max-w-full break-words`}
-          >
-            {transcribedText}
-          </motion.div>
-        )}
-      </AnimatePresence>
+    </div>
+  );
+}
+
+function TransferModal({ isOpen, onClose, onConfirm, state, setState }: any) {
+  if (!isOpen) return null;
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }} 
+      animate={{ opacity: 1 }} 
+      exit={{ opacity: 0 }} 
+      className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm"
+    >
+      <div className="absolute inset-0" onClick={onClose} />
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }} 
+        animate={{ scale: 1, y: 0 }} 
+        className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl relative p-8 space-y-6"
+      >
+        <h3 className="text-lg font-black tracking-tighter uppercase text-center">Initiate Transfer</h3>
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">转账金额 (Amount)</span>
+            <input 
+              type="number" 
+              placeholder="0.00" 
+              value={state.amount}
+              onChange={e => setState({ ...state, amount: e.target.value })}
+              className="w-full bg-zinc-50 border-none rounded-2xl p-5 text-2xl font-black focus:ring-1 focus:ring-zinc-900"
+            />
+          </div>
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">备注 (Remark)</span>
+            <input 
+              type="text" 
+              placeholder="输入转账备注..." 
+              value={state.remark}
+              onChange={e => setState({ ...state, remark: e.target.value })}
+              className="w-full bg-zinc-50 border-none rounded-2xl p-4 text-sm focus:ring-1 focus:ring-zinc-900"
+            />
+          </div>
+        </div>
+        <button 
+          onClick={() => onConfirm(state.amount, state.remark)}
+          disabled={!state.amount}
+          className="w-full bg-zinc-900 text-white font-black uppercase tracking-widest py-5 rounded-2xl active:scale-95 transition-all shadow-xl shadow-zinc-200 disabled:opacity-50"
+        >
+          Confirm Transfer
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function TransferCard({ role, amount, remark, style, glassClass }: any) {
+  return (
+    <div 
+      className={`min-w-[180px] rounded-2xl overflow-hidden shadow-xl shadow-orange-100 flex flex-col ${role === 'user' ? 'bg-orange-500' : 'bg-orange-400'} text-white transition-all active:scale-[0.98] ${glassClass}`}
+      style={{ ...style, backgroundColor: undefined, padding: 0 }}
+    >
+      <div className="p-4 flex items-center gap-3 border-b border-white/10">
+        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+          <CreditCard size={16} />
+        </div>
+        <div className="flex flex-col">
+          <span className="text-[14px] font-black leading-none">¥ {amount}</span>
+          <span className="text-[8px] opacity-70 uppercase tracking-widest mt-1">Chat Transfer</span>
+        </div>
+      </div>
+      <div className="px-4 py-2 bg-black/5 flex items-center justify-between">
+        <span className="text-[10px] truncate max-w-[120px] opacity-90">{remark || '给你的小红包'}</span>
+        <Check size={10} className="opacity-40" />
+      </div>
     </div>
   );
 }
