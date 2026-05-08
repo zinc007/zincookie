@@ -26,7 +26,10 @@ import {
   PlusCircle,
   Settings2,
   Trash2,
-  Check
+  Check,
+  Download,
+  UploadCloud,
+  HardDrive
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -181,7 +184,9 @@ export default function App() {
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
 
   // 消息与美化增强状态
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => 
+    getSafeStorage('app_messages', [])
+  );
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
@@ -212,7 +217,57 @@ export default function App() {
     localStorage.setItem('app_stickers', JSON.stringify(stickers));
     localStorage.setItem('custom_css', customStyle);
     localStorage.setItem('beauty_presets', JSON.stringify(beautyPresets));
-  }, [userProfile, apiSettings, characters, courses, posts, chatSettings, todos, stickers, customStyle, beautyPresets]);
+    localStorage.setItem('app_messages', JSON.stringify(messages));
+  }, [userProfile, apiSettings, characters, courses, posts, chatSettings, todos, stickers, customStyle, beautyPresets, messages]);
+
+  const handleExportData = () => {
+    const data = {
+      user_profile: userProfile,
+      api_settings: apiSettings,
+      app_characters: characters,
+      app_courses: courses,
+      app_posts: posts,
+      chat_settings: chatSettings,
+      app_todos: todos,
+      app_stickers: stickers,
+      custom_css: customStyle,
+      beauty_presets: beautyPresets,
+      app_messages: messages
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cookie-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (data.user_profile) setUserProfile(data.user_profile);
+        if (data.api_settings) setApiSettings(data.api_settings);
+        if (data.app_characters) setCharacters(data.app_characters);
+        if (data.app_courses) setCourses(data.app_courses);
+        if (data.app_posts) setPosts(data.app_posts);
+        if (data.chat_settings) setChatSettings(data.chat_settings);
+        if (data.app_todos) setTodos(data.app_todos);
+        if (data.app_stickers) setStickers(data.app_stickers);
+        if (data.custom_css) setCustomStyle(data.custom_css);
+        if (data.beauty_presets) setBeautyPresets(data.beauty_presets);
+        if (data.app_messages) setMessages(data.app_messages);
+        alert('导入成功，请刷新页面以确保所有样式生效。');
+      } catch (err) {
+        alert('导入失败，文件格式不正确。');
+      }
+    };
+    reader.readAsText(file);
+  };
 
   // --- API 与功能逻辑 ---
   const handleFetchModels = async () => {
@@ -848,13 +903,35 @@ export default function App() {
               {/* 侧边栏菜单切换容器 */}
               <div className="flex-1 overflow-y-auto px-4 py-4">
                 {sidebarView === 'main' ? (
-                  <div className="space-y-2">
-                    <SidebarItem icon={Settings} label="设置" onClick={() => setSidebarView('settings')} />
-                    <SidebarItem icon={Palette} label="美化" onClick={() => setSidebarView('beauty')} />
-                    <SidebarItem icon={CalendarIcon} label="日历" onClick={() => setSidebarView('calendar')} />
-                    <SidebarItem icon={BookOpen} label="课表" onClick={() => setSidebarView('schedule')} />
-                    <SidebarItem icon={Smile} label="表情包" onClick={() => setSidebarView('stickers')} />
-                  </div>
+                  <>
+                    <div className="space-y-2">
+                      <SidebarItem icon={Settings} label="设置" onClick={() => setSidebarView('settings')} />
+                      <SidebarItem icon={Palette} label="美化" onClick={() => setSidebarView('beauty')} />
+                      <SidebarItem icon={CalendarIcon} label="日历" onClick={() => setSidebarView('calendar')} />
+                      <SidebarItem icon={BookOpen} label="课表" onClick={() => setSidebarView('schedule')} />
+                      <SidebarItem icon={Smile} label="表情包" onClick={() => setSidebarView('stickers')} />
+                    </div>
+                    <div className="mt-12 pt-8 border-t border-zinc-100 px-2 space-y-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest">Backup Node</span>
+                        <span className="px-2 py-0.5 bg-zinc-100 text-zinc-400 text-[8px] font-bold rounded-md">LOCAL_DISK</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button 
+                          onClick={handleExportData}
+                          className="flex flex-col items-center justify-center gap-2 p-4 bg-zinc-50 rounded-2xl hover:bg-zinc-100 transition-all group"
+                        >
+                          <Download size={20} className="text-zinc-400 group-hover:text-zinc-900" />
+                          <span className="text-[10px] font-bold text-zinc-400 group-hover:text-zinc-900">备份导出</span>
+                        </button>
+                        <label className="flex flex-col items-center justify-center gap-2 p-4 bg-zinc-50 rounded-2xl hover:bg-zinc-100 transition-all group cursor-pointer">
+                          <UploadCloud size={20} className="text-zinc-400 group-hover:text-zinc-900" />
+                          <span className="text-[10px] font-bold text-zinc-400 group-hover:text-zinc-900">数据恢复</span>
+                          <input type="file" className="hidden" accept=".json" onChange={handleImportData} />
+                        </label>
+                      </div>
+                    </div>
+                  </>
                 ) : (
                   <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
                     <button 
