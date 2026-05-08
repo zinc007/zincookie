@@ -94,6 +94,9 @@ interface ChatSettings {
     bubblePadding?: number;
     bubbleWidth?: number;
     fontSize?: number;
+    frostedGlass?: boolean;
+    userBubbleColor?: string;
+    charBubbleColor?: string;
   }
 }
 
@@ -248,7 +251,7 @@ export default function App() {
     setStickers([...stickers, ...newStickers]);
   };
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = async (triggerAi: boolean = false) => {
     if (!inputMessage.trim() || isTyping) return;
     const content = inputMessage;
     const msgType = isVoiceMode ? 'voice' : 'text';
@@ -270,10 +273,14 @@ export default function App() {
       type: msgType
     };
     
+    const updatedMessages = [...messages, newUserMsg];
     setMessages(prev => [...prev, newUserMsg]);
     setInputMessage('');
     setQuotedMessage(null);
     setIsVoiceMode(false);
+
+    if (!triggerAi) return;
+
     setIsTyping(true);
 
     try {
@@ -282,7 +289,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiSettings.apiKey}` },
         body: JSON.stringify({ 
           model: apiSettings.model, 
-          messages: messages.concat(newUserMsg).map(m => ({ role: m.role, content: m.content })), 
+          messages: updatedMessages.map(m => ({ role: m.role, content: m.content })), 
           temperature: 0.7 
         })
       });
@@ -592,8 +599,12 @@ export default function App() {
                 const bubbleStyle = {
                   fontSize: settings.fontSize ? `${settings.fontSize}px` : undefined,
                   padding: settings.bubblePadding ? `${settings.bubblePadding}px` : undefined,
-                  maxWidth: settings.bubbleWidth ? `${settings.bubbleWidth}%` : '75%'
+                  maxWidth: settings.bubbleWidth ? `${settings.bubbleWidth}%` : '85%',
+                  backgroundColor: msg.role === 'user' ? settings.userBubbleColor : settings.charBubbleColor,
+                  color: (msg.role === 'user' && settings.userBubbleColor) || (msg.role === 'assistant' && settings.charBubbleColor) ? 'white' : undefined
                 };
+
+                const glassClass = settings.frostedGlass ? 'backdrop-blur-md bg-opacity-70' : '';
 
                 return (
                   <div 
@@ -637,10 +648,11 @@ export default function App() {
                         role={msg.role} 
                         duration={Math.min(msg.content.length * 0.5, 60).toFixed(0)} 
                         style={bubbleStyle}
+                        glassClass={glassClass}
                       />
                     ) : (
                       <div 
-                        className={`relative p-4 ${msg.role === 'user' ? 'bg-zinc-900 text-white rounded-3xl rounded-tr-sm' : 'bg-white text-zinc-800 border border-gray-100 rounded-3xl rounded-tl-sm shadow-xl shadow-zinc-100/50'} font-medium leading-relaxed`}
+                        className={`relative p-4 ${msg.role === 'user' ? (settings.userBubbleColor ? '' : 'bg-zinc-900 text-white') : (settings.charBubbleColor ? '' : 'bg-white text-zinc-800 border border-gray-100 shadow-xl shadow-zinc-100/50')} rounded-3xl ${msg.role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} font-medium leading-relaxed ${glassClass}`}
                         style={bubbleStyle}
                       >
                         {msg.content}
@@ -732,7 +744,7 @@ export default function App() {
                     type="text" 
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(false)}
                     placeholder={isVoiceMode ? "按下发送将转为语音..." : (isTyping ? "正在思考..." : "发送消息...")} 
                     className={`bg-transparent border-none flex-1 py-2 text-sm focus:ring-0 font-medium ${isVoiceMode ? 'text-white placeholder:text-zinc-500' : 'text-zinc-900'}`} 
                   />
@@ -743,7 +755,7 @@ export default function App() {
                   />
                 </div>
                 <button 
-                  onClick={handleSendMessage}
+                  onClick={() => handleSendMessage(true)}
                   disabled={isTyping}
                   className="w-10 h-10 bg-zinc-900 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-95 transition-all disabled:opacity-50 shrink-0"
                 >
@@ -1157,10 +1169,33 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
         <ImageUploader label="虚拟背景 (Background Layer)" onUpload={(u:any) => setLocalSettings({...localSettings, background: u})} />
 
         <div className="grid grid-cols-2 gap-4">
-          <SettingSlider label="头像大小" value={localSettings.avatarSize || 36} min={20} max={80} onChange={(v) => setLocalSettings({...localSettings, avatarSize: v})} />
-          <SettingSlider label="气泡内边距" value={localSettings.bubblePadding || 16} min={8} max={40} onChange={(v) => setLocalSettings({...localSettings, bubblePadding: v})} />
-          <SettingSlider label="最大宽度 (%)" value={localSettings.bubbleWidth || 75} min={30} max={95} onChange={(v) => setLocalSettings({...localSettings, bubbleWidth: v})} />
-          <SettingSlider label="字体大小 (px)" value={localSettings.fontSize || 14} min={10} max={24} onChange={(v) => setLocalSettings({...localSettings, fontSize: v})} />
+          <SettingSlider label="头像大小" value={localSettings.avatarSize || 36} min={20} max={80} onChange={(v:any) => setLocalSettings({...localSettings, avatarSize: v})} />
+          <SettingSlider label="气泡内边距" value={localSettings.bubblePadding || 16} min={8} max={40} onChange={(v:any) => setLocalSettings({...localSettings, bubblePadding: v})} />
+          <SettingSlider label="最大宽度 (%)" value={localSettings.bubbleWidth || 85} min={30} max={98} onChange={(v:any) => setLocalSettings({...localSettings, bubbleWidth: v})} />
+          <SettingSlider label="字体大小 (px)" value={localSettings.fontSize || 14} min={10} max={24} onChange={(v:any) => setLocalSettings({...localSettings, fontSize: v})} />
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-4 bg-zinc-50 rounded-2xl">
+            <span className="text-xs font-bold text-zinc-600">气泡磨砂效果</span>
+            <button 
+              onClick={() => setLocalSettings({...localSettings, frostedGlass: !localSettings.frostedGlass})}
+              className={`w-10 h-5 rounded-full transition-colors flex items-center px-1 ${localSettings.frostedGlass ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+            >
+              <div className={`w-3 h-3 bg-white rounded-full transition-transform ${localSettings.frostedGlass ? 'translate-x-5' : ''}`} />
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">我方气泡颜色</span>
+              <input type="color" value={localSettings.userBubbleColor || '#18181b'} onChange={e => setLocalSettings({...localSettings, userBubbleColor: e.target.value})} className="w-full h-10 rounded-xl cursor-pointer" />
+            </div>
+            <div className="space-y-2">
+              <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">对方气泡颜色</span>
+              <input type="color" value={localSettings.charBubbleColor || '#ffffff'} onChange={e => setLocalSettings({...localSettings, charBubbleColor: e.target.value})} className="w-full h-10 rounded-xl cursor-pointer" />
+            </div>
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -1258,7 +1293,7 @@ function AddCharacterModal({ isOpen, onClose, onSave, ImageUploader }: any) {
   );
 }
 
-function VoiceBubble({ role, duration, style }: any) {
+function VoiceBubble({ role, duration, style, glassClass }: any) {
   const [isAnimating, setIsAnimating] = useState(false);
   
   return (
@@ -1267,7 +1302,7 @@ function VoiceBubble({ role, duration, style }: any) {
         setIsAnimating(true);
         setTimeout(() => setIsAnimating(false), 2000);
       }}
-      className={`relative cursor-pointer min-w-[120px] p-4 flex items-center gap-3 active:scale-95 transition-all ${role === 'user' ? 'bg-zinc-900 text-white rounded-3xl rounded-tr-sm' : 'bg-white text-zinc-800 border border-gray-100 rounded-3xl rounded-tl-sm shadow-xl shadow-zinc-100/50'}`}
+      className={`relative cursor-pointer min-w-[120px] p-4 flex items-center gap-3 active:scale-95 transition-all ${role === 'user' ? (style.backgroundColor ? '' : 'bg-zinc-900 text-white') : (style.backgroundColor ? '' : 'bg-white text-zinc-800 border border-gray-100 shadow-xl shadow-zinc-100/50')} rounded-3xl ${role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} ${glassClass}`}
       style={style}
     >
       <Mic size={16} className={isAnimating ? 'animate-pulse' : ''} />
