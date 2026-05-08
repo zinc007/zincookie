@@ -175,6 +175,10 @@ export default function App() {
   const [apiSettings, setApiSettings] = useState<ApiSettings>(() => 
     getSafeStorage('api_settings', { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o' })
   );
+  
+  const [todoColors, setTodoColors] = useState<string[]>(() => 
+    getSafeStorage('todo_colors', ['#18181b', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'])
+  );
 
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
@@ -219,6 +223,7 @@ export default function App() {
       localStorage.setItem('custom_css', customStyle);
       localStorage.setItem('beauty_presets', JSON.stringify(beautyPresets));
       localStorage.setItem('app_messages', JSON.stringify(messages));
+      localStorage.setItem('todo_colors', JSON.stringify(todoColors));
     } catch (e) {
       if (e instanceof Error && e.name === 'QuotaExceededError') {
         console.warn('Storage quota exceeded, failed to save some data.');
@@ -389,7 +394,7 @@ export default function App() {
       <div className="fixed inset-0 pointer-events-none z-[-1] bg-white transition-colors duration-500" />
 
       {/* 顶部栏 */}
-      <header className="flex items-center justify-between px-6 pt-8 pb-3 border-b border-gray-100 sticky top-0 bg-white/80 backdrop-blur-md z-10 transition-all">
+      <header className="flex items-center justify-between px-6 pt-4 pb-2 border-b border-gray-100 sticky top-0 bg-white/80 backdrop-blur-md z-10 transition-all">
         <button 
           onClick={() => {
             setIsSidebarOpen(true);
@@ -397,9 +402,13 @@ export default function App() {
           }}
           className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center overflow-hidden hover:bg-gray-100 transition-all shadow-sm group"
         >
-          <div className="bg-zinc-900 w-full h-full flex items-center justify-center group-hover:scale-110 transition-transform">
-            <User className="text-white w-5 h-5" />
-          </div>
+          {userProfile.avatar ? (
+            <img src={userProfile.avatar} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+          ) : (
+            <div className="bg-zinc-900 w-full h-full flex items-center justify-center group-hover:scale-110 transition-transform">
+              <User className="text-white w-5 h-5" />
+            </div>
+          )}
         </button>
         <h1 className="text-lg font-bold tracking-tight text-zinc-800">
           {activeTab === 'messages' && 'MESSAGES'}
@@ -503,14 +512,14 @@ export default function App() {
                   <div className="flex items-center gap-3 mb-4">
                     <div className={`w-10 h-10 rounded-xl ${post.type === 'ai' ? 'bg-indigo-500' : 'bg-zinc-900'} flex items-center justify-center text-white text-xs font-bold overflow-hidden`}>
                       {post.type === 'ai' ? (
-                        (selectedChat?.avatar ? <img src={selectedChat.avatar} className="w-full h-full object-cover" /> : 'AI')
+                        (characters[0]?.avatar ? <img src={characters[0].avatar} className="w-full h-full object-cover" /> : 'AI')
                       ) : (
                         (userProfile.avatar ? <img src={userProfile.avatar} className="w-full h-full object-cover" /> : 'ME')
                       )}
                     </div>
                     <div>
                       <div className="font-bold text-sm">
-                        {post.type === 'ai' ? (chatSettings[selectedChat?.id || '']?.nickname || selectedChat?.name || '智能助手') : userProfile.name}
+                        {post.type === 'ai' ? (characters[0]?.name || '智能助手') : userProfile.name}
                       </div>
                       <div className="text-[10px] text-zinc-300 font-mono italic">{post.date}</div>
                     </div>
@@ -545,10 +554,10 @@ export default function App() {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed inset-0 bg-white z-[60] flex flex-col pt-12"
+            className="fixed inset-0 bg-white z-[60] flex flex-col pt-6"
           >
             {/* 聊天顶部 */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white/80 backdrop-blur-md">
+            <div className="flex items-center justify-between px-6 py-2 border-b border-gray-100 bg-white/80 backdrop-blur-md">
               <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400">
                 <ChevronRight size={24} className="rotate-180" />
               </button>
@@ -690,6 +699,7 @@ export default function App() {
                         duration={Math.min(msg.content.length * 0.5, 60).toFixed(0)} 
                         style={bubbleStyle}
                         glassClass={glassClass}
+                        transcribedText={msg.content}
                       />
                     ) : (
                       <div 
@@ -1098,12 +1108,23 @@ export default function App() {
                     </div>
 
                     <div className="grid grid-cols-7 gap-2 p-4 bg-zinc-50 rounded-3xl">
-                      {PRESET_COLORS.map(c => (
-                        <div key={c} className="aspect-square rounded-full cursor-pointer hover:scale-125 transition-all border-2 border-white" style={{ backgroundColor: c }} onClick={() => {
-                          const hex = prompt('自定义颜色:', c);
-                          if (hex && hex.startsWith('#')) alert('预设颜色将在下次添加时生效');
+                      {todoColors.map((c, idx) => (
+                        <div key={idx} className="aspect-square rounded-full cursor-pointer hover:scale-125 transition-all border-2 border-white" style={{ backgroundColor: c }} onClick={() => {
+                          const hex = prompt('自定义颜色 (HEX):', c);
+                          if (hex && hex.startsWith('#')) {
+                            setTodoColors(prev => prev.map((old, i) => i === idx ? hex : old));
+                          }
                         }} />
                       ))}
+                      <button 
+                        onClick={() => {
+                           const hex = prompt('添加新颜色 (HEX):', '#000000');
+                           if (hex && hex.startsWith('#')) setTodoColors([...todoColors, hex]);
+                        }}
+                        className="aspect-square rounded-full border-2 border-dashed border-zinc-200 flex items-center justify-center text-zinc-300 hover:border-zinc-400 hover:text-zinc-500 transition-all"
+                      >
+                        <Plus size={12} />
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1368,30 +1389,45 @@ function AddCharacterModal({ isOpen, onClose, onSave, ImageUploader }: any) {
   );
 }
 
-function VoiceBubble({ role, duration, style, glassClass }: any) {
+function VoiceBubble({ role, duration, style, glassClass, transcribedText }: any) {
   const [isAnimating, setIsAnimating] = useState(false);
+  const [showTranscription, setShowTranscription] = useState(false);
   
   return (
-    <div 
-      onClick={() => {
-        setIsAnimating(true);
-        setTimeout(() => setIsAnimating(false), 2000);
-      }}
-      className={`relative cursor-pointer min-w-[120px] p-4 flex items-center gap-3 active:scale-95 transition-all ${role === 'user' ? (style.backgroundColor ? '' : 'bg-zinc-900 text-white') : (style.backgroundColor ? '' : 'bg-white text-zinc-800 border border-gray-100 shadow-xl shadow-zinc-100/50')} rounded-3xl ${role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} ${glassClass}`}
-      style={style}
-    >
-      <Mic size={16} className={isAnimating ? 'animate-pulse' : ''} />
-      <div className="flex gap-0.5 items-end h-4 flex-1">
-        {[...Array(12)].map((_, i) => (
-          <motion.div 
-            key={i}
-            animate={{ height: isAnimating ? [4, Math.random() * 16 + 4, 4] : (Math.random() * 8 + 4) }}
-            transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.05 }}
-            className={`w-1 rounded-full ${role === 'user' ? 'bg-white/40' : 'bg-zinc-200'}`}
-          />
-        ))}
+    <div className="flex flex-col gap-1 items-end max-w-[80%]">
+      <div 
+        onClick={() => {
+          setIsAnimating(true);
+          setShowTranscription(!showTranscription);
+          setTimeout(() => setIsAnimating(false), 2000);
+        }}
+        className={`relative cursor-pointer min-w-[120px] p-4 flex items-center gap-3 active:scale-95 transition-all ${role === 'user' ? (style.backgroundColor ? '' : 'bg-zinc-900 text-white') : (style.backgroundColor ? '' : 'bg-white text-zinc-800 border border-gray-100 shadow-xl shadow-zinc-100/50')} rounded-3xl ${role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} ${glassClass}`}
+        style={style}
+      >
+        <Mic size={16} className={isAnimating ? 'animate-pulse' : ''} />
+        <div className="flex gap-0.5 items-end h-4 flex-1">
+          {[...Array(12)].map((_, i) => (
+            <motion.div 
+              key={i}
+              animate={{ height: isAnimating ? [4, Math.random() * 16 + 4, 4] : (Math.random() * 8 + 4) }}
+              transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.05 }}
+              className={`w-1 rounded-full ${role === 'user' ? 'bg-white/40' : 'bg-zinc-200'}`}
+            />
+          ))}
+        </div>
+        <span className="text-[10px] font-bold font-mono opacity-60">{duration}"</span>
       </div>
-      <span className="text-[10px] font-bold font-mono opacity-60">{duration}"</span>
+      <AnimatePresence>
+        {showTranscription && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className={`text-[10px] p-2 rounded-xl bg-white/50 border border-zinc-100 text-zinc-400 italic shadow-sm mt-1 max-w-full break-words`}
+          >
+            {transcribedText}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
