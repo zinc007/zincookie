@@ -207,18 +207,32 @@ export default function App() {
 
   // --- 持久化副作用 ---
   useEffect(() => {
-    localStorage.setItem('user_profile', JSON.stringify(userProfile));
-    localStorage.setItem('api_settings', JSON.stringify(apiSettings));
-    localStorage.setItem('app_characters', JSON.stringify(characters));
-    localStorage.setItem('app_courses', JSON.stringify(courses));
-    localStorage.setItem('app_posts', JSON.stringify(posts));
-    localStorage.setItem('chat_settings', JSON.stringify(chatSettings));
-    localStorage.setItem('app_todos', JSON.stringify(todos));
-    localStorage.setItem('app_stickers', JSON.stringify(stickers));
-    localStorage.setItem('custom_css', customStyle);
-    localStorage.setItem('beauty_presets', JSON.stringify(beautyPresets));
-    localStorage.setItem('app_messages', JSON.stringify(messages));
+    try {
+      localStorage.setItem('user_profile', JSON.stringify(userProfile));
+      localStorage.setItem('api_settings', JSON.stringify(apiSettings));
+      localStorage.setItem('app_characters', JSON.stringify(characters));
+      localStorage.setItem('app_courses', JSON.stringify(courses));
+      localStorage.setItem('app_posts', JSON.stringify(posts));
+      localStorage.setItem('chat_settings', JSON.stringify(chatSettings));
+      localStorage.setItem('app_todos', JSON.stringify(todos));
+      localStorage.setItem('app_stickers', JSON.stringify(stickers));
+      localStorage.setItem('custom_css', customStyle);
+      localStorage.setItem('beauty_presets', JSON.stringify(beautyPresets));
+      localStorage.setItem('app_messages', JSON.stringify(messages));
+    } catch (e) {
+      if (e instanceof Error && e.name === 'QuotaExceededError') {
+        console.warn('Storage quota exceeded, failed to save some data.');
+      }
+    }
   }, [userProfile, apiSettings, characters, courses, posts, chatSettings, todos, stickers, customStyle, beautyPresets, messages]);
+
+  const handleClearCache = async () => {
+    if (!confirm('确定要清除所有本地数据吗？这将包括消息记录、角色设置和美容预设。')) return;
+    localStorage.clear();
+    const cacheNames = await caches.keys();
+    await Promise.all(cacheNames.map(name => caches.delete(name)));
+    window.location.reload();
+  };
 
   const handleExportData = () => {
     const data = {
@@ -369,41 +383,13 @@ export default function App() {
     }
   };
 
-  const ImageUploader = ({ onUpload, label }: { onUpload: (url: string) => void, label: string }) => {
-    const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (ev) => onUpload(ev.target?.result as string);
-        reader.readAsDataURL(file);
-      }
-    };
-    return (
-      <div className="space-y-2">
-        <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest pl-1">{label}</span>
-        <div className="flex gap-2">
-          <input 
-            type="text" 
-            placeholder="粘贴外链 URL"
-            className="flex-1 bg-zinc-50 border-none rounded-xl p-3 text-xs focus:ring-1 focus:ring-zinc-200"
-            onBlur={(e) => e.target.value && onUpload(e.target.value)}
-          />
-          <label className="bg-zinc-900 text-white px-4 py-3 rounded-xl cursor-pointer hover:bg-zinc-700 transition-colors flex items-center justify-center">
-            <PlusCircle size={16} />
-            <input type="file" className="hidden" accept="image/*" onChange={handleFile} />
-          </label>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="flex flex-col h-screen bg-white text-black font-sans overflow-hidden">
       {/* 全局注入背景 (针对某些预设) */}
       <div className="fixed inset-0 pointer-events-none z-[-1] bg-white transition-colors duration-500" />
 
       {/* 顶部栏 */}
-      <header className="flex items-center justify-between px-6 pt-16 pb-6 border-b border-gray-100 sticky top-0 bg-white/80 backdrop-blur-md z-10 transition-all">
+      <header className="flex items-center justify-between px-6 pt-8 pb-3 border-b border-gray-100 sticky top-0 bg-white/80 backdrop-blur-md z-10 transition-all">
         <button 
           onClick={() => {
             setIsSidebarOpen(true);
@@ -916,7 +902,7 @@ export default function App() {
                         <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest">Backup Node</span>
                         <span className="px-2 py-0.5 bg-zinc-100 text-zinc-400 text-[8px] font-bold rounded-md">LOCAL_DISK</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-3 pb-8">
                         <button 
                           onClick={handleExportData}
                           className="flex flex-col items-center justify-center gap-2 p-4 bg-zinc-50 rounded-2xl hover:bg-zinc-100 transition-all group"
@@ -930,6 +916,13 @@ export default function App() {
                           <input type="file" className="hidden" accept=".json" onChange={handleImportData} />
                         </label>
                       </div>
+                      <button 
+                        onClick={handleClearCache}
+                        className="w-full flex items-center justify-center gap-2 p-4 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition-all font-bold text-[10px] uppercase tracking-widest mt-4"
+                      >
+                        <Trash2 size={16} />
+                        清除站点缓存 (WIPE)
+                      </button>
                     </div>
                   </>
                 ) : (
@@ -1221,12 +1214,17 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
   if (!isOpen || !char || !localSettings) return null;
 
   const handleSave = () => {
-    setChatSettings((prev: any) => ({ ...prev, [char.id]: localSettings }));
-    // 自动填充全局角色列表头像
-    if (localSettings.charAvatar) {
-      setCharacters((prev: Character[]) => prev.map(c => c.id === char.id ? { ...c, avatar: localSettings.charAvatar } : c));
+    try {
+      setChatSettings((prev: any) => ({ ...prev, [char.id]: localSettings }));
+      // 自动填充全局角色列表头像
+      if (localSettings.charAvatar) {
+        setCharacters((prev: Character[]) => prev.map(c => c.id === char.id ? { ...c, avatar: localSettings.charAvatar } : c));
+      }
+      onClose();
+    } catch (e) {
+      alert('保存失败：存储空间不足。请尝试清除缓存或减小图片大小。');
+      console.error(e);
     }
-    onClose();
   };
 
   return (
@@ -1405,6 +1403,43 @@ function ContextItem({ label, onClick, color = 'text-white' }: { label: string, 
     <button onClick={onClick} className={`w-full px-4 py-2 text-left text-xs font-bold hover:bg-zinc-800 transition-colors ${color}`}>
       {label}
     </button>
+  );
+}
+
+function ImageUploader({ onUpload, label }: { onUpload: (url: string) => void, label: string }) {
+  const [isUploading, setIsUploading] = useState(false);
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsUploading(true);
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        onUpload(ev.target?.result as string);
+        setIsUploading(false);
+      };
+      reader.onerror = () => {
+        alert('文件读取失败');
+        setIsUploading(false);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+  return (
+    <div className="space-y-2">
+      <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest pl-1">{label}</span>
+      <div className="flex gap-2">
+        <input 
+          type="text" 
+          placeholder="粘贴外链 URL"
+          className="flex-1 bg-zinc-50 border-none rounded-xl p-3 text-xs focus:ring-1 focus:ring-zinc-200"
+          onBlur={(e) => e.target.value && onUpload(e.target.value)}
+        />
+        <label className="bg-zinc-900 text-white px-4 py-3 rounded-xl cursor-pointer hover:bg-zinc-700 transition-colors flex items-center justify-center min-w-[3rem]">
+          {isUploading ? <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" /> : <PlusCircle size={16} />}
+          <input type="file" className="hidden" accept="image/*" onChange={handleFile} />
+        </label>
+      </div>
+    </div>
   );
 }
 
