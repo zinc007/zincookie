@@ -425,7 +425,7 @@ export default function App() {
                 <ChevronRight size={24} className="rotate-180" />
               </button>
               <div className="flex flex-col items-center">
-                <span className="font-bold text-zinc-900 text-sm tracking-tight">{selectedChat}</span>
+                <span className="font-bold text-zinc-900 text-sm tracking-tight">{chatSettings[selectedChat.id]?.nickname || selectedChat.name}</span>
                 <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1">• 在线</span>
               </div>
               <button 
@@ -435,58 +435,6 @@ export default function App() {
                 <Settings2 size={20} />
               </button>
             </div>
-
-            {/* 聊天设置模态窗 */}
-            <AnimatePresence>
-              {isChatSettingsOpen && (
-                <motion.div 
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  className="absolute inset-0 bg-white/95 backdrop-blur-md z-[70] p-10 flex flex-col pt-24"
-                >
-                  <button onClick={() => setIsChatSettingsOpen(false)} className="absolute top-12 right-10 p-2 bg-zinc-100 rounded-full">
-                    <X size={20} />
-                  </button>
-                  <h3 className="text-xl font-black mb-8">CHAT SETTINGS</h3>
-                  <div className="space-y-6 overflow-y-auto pr-2">
-                    <label className="block">
-                      <span className="text-xs font-bold text-zinc-400 uppercase">角色头像 URL</span>
-                      <input 
-                        className="w-full bg-zinc-50 rounded-2xl p-4 text-sm mt-1 focus:ring-1 focus:ring-zinc-900 border-none"
-                        value={chatSettings[selectedChat!]?.charAvatar || ''}
-                        onChange={(e) => setChatSettings({ ...chatSettings, [selectedChat!]: { ...chatSettings[selectedChat!], charAvatar: e.target.value } })}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-bold text-zinc-400 uppercase">我的头像 (仅此聊天)</span>
-                      <input 
-                        className="w-full bg-zinc-50 rounded-2xl p-4 text-sm mt-1 focus:ring-1 focus:ring-zinc-900 border-none"
-                        value={chatSettings[selectedChat!]?.userAvatar || ''}
-                        onChange={(e) => setChatSettings({ ...chatSettings, [selectedChat!]: { ...chatSettings[selectedChat!], userAvatar: e.target.value } })}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-bold text-zinc-400 uppercase">背景图片 URL</span>
-                      <input 
-                        className="w-full bg-zinc-50 rounded-2xl p-4 text-sm mt-1 focus:ring-1 focus:ring-zinc-900 border-none"
-                        value={chatSettings[selectedChat!]?.background || ''}
-                        onChange={(e) => setChatSettings({ ...chatSettings, [selectedChat!]: { ...chatSettings[selectedChat!], background: e.target.value } })}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-bold text-zinc-400 uppercase">个性化 CSS 美化</span>
-                      <textarea 
-                        className="w-full h-32 bg-zinc-50 rounded-2xl p-4 text-xs font-mono mt-1 focus:ring-1 focus:ring-zinc-900 border-none"
-                        value={chatSettings[selectedChat!]?.customCss || ''}
-                        onChange={(e) => setChatSettings({ ...chatSettings, [selectedChat!]: { ...chatSettings[selectedChat!], customCss: e.target.value } })}
-                        placeholder=".bubble { border-radius: 0; }"
-                      />
-                    </label>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
 
             <ChatSettingsModal 
               char={selectedChat} 
