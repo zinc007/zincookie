@@ -1,0 +1,17 @@
+{
+  "name": "Minimalist Chat Framework",
+  "short_name": "MinChat",
+  "description": "A minimalist chat application framework",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2590/2590525.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

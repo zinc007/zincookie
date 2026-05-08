@@ -51,12 +51,87 @@ export default function App() {
   // 侧边栏子菜单状态
   const [sidebarView, setSidebarView] = useState<'main' | 'settings' | 'beauty' | 'calendar' | 'popup'>('main');
 
-  // 持久化设置状态 (模拟本地存储)
-  const [apiSettings, setApiSettings] = useState<ApiSettings>({
-    baseUrl: 'https://api.openai.com/v1',
-    apiKey: '',
-    model: 'gpt-4o'
+  // 聊天对话状态
+  const [messages, setMessages] = useState<{role: 'user' | 'assistant', content: string}[]>([]);
+  const [isTyping, setIsTyping] = useState(false);
+  const [inputMessage, setInputMessage] = useState('');
+
+  // 持久化设置状态 (结合本地存储增强，防止解析错误或 iframe 权限限制)
+  const [apiSettings, setApiSettings] = useState<ApiSettings>(() => {
+    const defaultSettings = {
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: '',
+      model: 'gpt-4o'
+    };
+    try {
+      const saved = localStorage.getItem('api_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.baseUrl && parsed.apiKey) return parsed;
+      }
+    } catch (e) {
+      console.warn('LocalStorage access blocked or failed:', e);
+    }
+    return defaultSettings;
   });
+
+  // 保存设置到本地
+  useEffect(() => {
+    try {
+      localStorage.setItem('api_settings', JSON.stringify(apiSettings));
+    } catch (e) {
+      console.warn('LocalStorage save blocked:', e);
+    }
+  }, [apiSettings]);
+
+  // --- API 对接核心函数 ---
+  const handleSendMessage = async () => {
+    if (!inputMessage.trim() || isTyping) return;
+
+    // 1. 添加用户消息到 UI
+    const newUserMsg = { role: 'user' as const, content: inputMessage };
+    setMessages(prev => [...prev, newUserMsg]);
+    setInputMessage('');
+    setIsTyping(true);
+
+    try {
+      // 2. 发起 API 请求
+      const response = await fetch(`${apiSettings.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiSettings.apiKey}`
+        },
+        body: JSON.stringify({
+          model: apiSettings.model,
+          messages: [...messages, newUserMsg],
+          temperature: 0.7
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.choices && data.choices[0]) {
+        const aiMsg = { 
+          role: 'assistant' as const, 
+          content: data.choices[0].message.content 
+        };
+        setMessages(prev => [...prev, aiMsg]);
+      } else {
+        throw new Error(data.error?.message || 'API 返回异常');
+      }
+    } catch (err) {
+      console.error('API Error:', err);
+      // 发生错误时，给一个友好的模拟提示
+      const errorMsg = { 
+        role: 'assistant' as const, 
+        content: `Error: ${err instanceof Error ? err.message : '连接接口失败，请检查设置中的秘钥或网址是否正确。'}` 
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
   const [customStyle, setCustomStyle] = useState('');
   const [currentStylePreset, setCurrentStylePreset] = useState('default');
   const [todos, setTodos] = useState<TodoItem[]>([
@@ -225,21 +300,30 @@ export default function App() {
 
             {/* 消息区域 */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white">
-              <div className="flex justify-start">
-                <div className="max-w-[85%] p-4 border-2 border-black bg-white text-sm font-medium leading-relaxed shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                  你好！我是 {selectedChat}。有什么可以帮你的吗？
+              {messages.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-full opacity-20 grayscale">
+                  <MessageSquare size={48} className="mb-2" />
+                  <p className="text-xs font-black uppercase">Start a new conversation</p>
                 </div>
-              </div>
-              <div className="flex justify-end">
-                <div className="max-w-[85%] p-4 bg-black text-white text-sm font-medium leading-relaxed shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                  我正在测试简约清新的聊天气泡设计，看起来如何？
+              )}
+              
+              {messages.map((msg, index) => (
+                <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] p-4 border-2 border-black ${msg.role === 'user' ? 'bg-black text-white' : 'bg-white text-black'} text-sm font-medium leading-relaxed shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
+                    {msg.content}
+                  </div>
                 </div>
-              </div>
-              <div className="flex justify-start">
-                <div className="max-w-[85%] p-4 border-2 border-black bg-white text-sm font-medium leading-relaxed shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                  非常符合你的要求，平面化且干净。
+              ))}
+              
+              {isTyping && (
+                <div className="flex justify-start">
+                  <div className="p-4 border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex gap-1">
+                    <span className="w-1 h-1 bg-black rounded-full animate-bounce"></span>
+                    <span className="w-1 h-1 bg-black rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                    <span className="w-1 h-1 bg-black rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* 输入栏 */}
@@ -247,12 +331,19 @@ export default function App() {
               <div className="flex-1 border-2 border-black bg-white flex items-center px-4 py-1">
                 <input 
                   type="text" 
-                  placeholder="发送消息..." 
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                  placeholder={isTyping ? "正在思考..." : "发送消息..."} 
                   className="bg-transparent border-none flex-1 py-3 text-sm focus:ring-0 font-medium" 
                 />
                 <Plus size={18} className="text-black ml-2 cursor-pointer" />
               </div>
-              <button className="w-12 h-12 bg-black border-2 border-black flex items-center justify-center text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">
+              <button 
+                onClick={handleSendMessage}
+                disabled={isTyping}
+                className="w-12 h-12 bg-black border-2 border-black flex items-center justify-center text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
+              >
                 <Send size={18} />
               </button>
             </div>
