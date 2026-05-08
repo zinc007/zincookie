@@ -33,6 +33,20 @@ import { motion, AnimatePresence } from 'motion/react';
 // --- 类型定义 ---
 type Tab = 'messages' | 'contacts' | 'space';
 
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  time: string;
+  isEdited?: boolean;
+}
+
+interface BeautyPreset {
+  id: string;
+  name: string;
+  css: string;
+}
+
 interface Character {
   id: string;
   name: string;
@@ -97,53 +111,56 @@ export default function App() {
   // 侧边栏子菜单状态
   const [sidebarView, setSidebarView] = useState<'main' | 'settings' | 'beauty' | 'calendar' | 'popup' | 'schedule'>('main');
 
+  // 辅助函数：安全地从 localStorage 解析 JSON
+  const getSafeStorage = (key: string, defaultValue: any) => {
+    try {
+      const saved = localStorage.getItem(key);
+      if (!saved || saved === 'undefined') return defaultValue;
+      return JSON.parse(saved);
+    } catch (e) {
+      return defaultValue;
+    }
+  };
+
   // 用户资料状态
-  const [userProfile, setUserProfile] = useState(() => {
-    const saved = localStorage.getItem('user_profile');
-    return saved ? JSON.parse(saved) : { name: 'User Name', status: 'ID_2026.0508', avatar: '' };
-  });
+  const [userProfile, setUserProfile] = useState(() => 
+    getSafeStorage('user_profile', { name: 'User Name', status: 'ID_2026.0508', avatar: '' })
+  );
 
   // 核心数据状态 (带本地持久化)
-  const [characters, setCharacters] = useState<Character[]>(() => {
-    const saved = localStorage.getItem('app_characters');
-    return saved ? JSON.parse(saved) : [
+  const [characters, setCharacters] = useState<Character[]>(() => 
+    getSafeStorage('app_characters', [
       { id: '1', name: '智能助手', avatar: '', notes: '默认系统助手', lastMessage: '你好！有什么可以帮你的吗？', time: '12:00' }
-    ];
-  });
+    ])
+  );
 
-  const [courses, setCourses] = useState<Course[]>(() => {
-    const saved = localStorage.getItem('app_courses');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [courses, setCourses] = useState<Course[]>(() => 
+    getSafeStorage('app_courses', [])
+  );
 
-  const [chatSettings, setChatSettings] = useState<ChatSettings>(() => {
-    const saved = localStorage.getItem('chat_settings');
-    return saved ? JSON.parse(saved) : {};
-  });
+  const [chatSettings, setChatSettings] = useState<ChatSettings>(() => 
+    getSafeStorage('chat_settings', {})
+  );
 
-  const [posts, setPosts] = useState<{id: string, content: string, date: string, type: 'user' | 'ai'}[]>(() => {
-    const saved = localStorage.getItem('app_posts');
-    return saved ? JSON.parse(saved) : [
+  const [posts, setPosts] = useState<{id: string, content: string, date: string, type: 'user' | 'ai'}[]>(() => 
+    getSafeStorage('app_posts', [
       { id: '1', content: '今天开启我的新计划。', date: '5月8日', type: 'user' }
-    ];
-  });
+    ])
+  );
 
-  const [todos, setTodos] = useState<TodoItem[]>(() => {
-    const saved = localStorage.getItem('app_todos');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [todos, setTodos] = useState<TodoItem[]>(() => 
+    getSafeStorage('app_todos', [])
+  );
 
-  const [stickers, setStickers] = useState<Sticker[]>(() => {
-    const saved = localStorage.getItem('app_stickers');
-    return saved ? JSON.parse(saved) : [
+  const [stickers, setStickers] = useState<Sticker[]>(() => 
+    getSafeStorage('app_stickers', [
       { id: '1', name: '开心', url: 'https://cdn-icons-png.flaticon.com/512/2590/2590525.png' }
-    ];
-  });
+    ])
+  );
 
-  const [apiSettings, setApiSettings] = useState<ApiSettings>(() => {
-    const saved = localStorage.getItem('api_settings');
-    return saved ? JSON.parse(saved) : { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o' };
-  });
+  const [apiSettings, setApiSettings] = useState<ApiSettings>(() => 
+    getSafeStorage('api_settings', { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o' })
+  );
 
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
@@ -152,10 +169,23 @@ export default function App() {
   const [isChatSettingsOpen, setIsChatSettingsOpen] = useState(false);
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
 
-  // 聊天对话状态
-  const [messages, setMessages] = useState<{role: 'user' | 'assistant', content: string}[]>([]);
+  // 消息与美化增强状态
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, msgId: string } | null>(null);
+
+  const [beautyPresets, setBeautyPresets] = useState<BeautyPreset[]>(() => 
+    getSafeStorage('beauty_presets', [{ id: 'default', name: '默认黑白', css: '' }])
+  );
+
   const [isTyping, setIsTyping] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
+
+  // 课表/日历辅助逻辑
+  const [currentDate, setCurrentDate] = useState(new Date());
 
   // --- 持久化副作用 ---
   useEffect(() => {
@@ -168,7 +198,8 @@ export default function App() {
     localStorage.setItem('app_todos', JSON.stringify(todos));
     localStorage.setItem('app_stickers', JSON.stringify(stickers));
     localStorage.setItem('custom_css', customStyle);
-  }, [userProfile, apiSettings, characters, courses, posts, chatSettings, todos, stickers, customStyle]);
+    localStorage.setItem('beauty_presets', JSON.stringify(beautyPresets));
+  }, [userProfile, apiSettings, characters, courses, posts, chatSettings, todos, stickers, customStyle, beautyPresets]);
 
   // --- API 与功能逻辑 ---
   const handleFetchModels = async () => {
@@ -210,23 +241,54 @@ export default function App() {
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isTyping) return;
     const content = inputMessage;
-    const newUserMsg = { role: 'user' as const, content };
+    
+    // 如果是编辑模式
+    if (editingMessageId) {
+      setMessages(prev => prev.map(m => m.id === editingMessageId ? { ...m, content, isEdited: true } : m));
+      setEditingMessageId(null);
+      setInputMessage('');
+      return;
+    }
+
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const newUserMsg: Message = { 
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
+      role: 'user', 
+      content: quotedMessage ? `> ${quotedMessage.content}\n\n${content}` : content, 
+      time 
+    };
+    
     setMessages(prev => [...prev, newUserMsg]);
     setInputMessage('');
+    setQuotedMessage(null);
     setIsTyping(true);
 
     try {
       const resp = await fetch(`${apiSettings.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiSettings.apiKey}` },
-        body: JSON.stringify({ model: apiSettings.model, messages: [...messages, newUserMsg], temperature: 0.7 })
+        body: JSON.stringify({ 
+          model: apiSettings.model, 
+          messages: messages.concat(newUserMsg).map(m => ({ role: m.role, content: m.content })), 
+          temperature: 0.7 
+        })
       });
       const data = await resp.json();
-      if (data.choices?.[0]) {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.choices[0].message.content }]);
+      if (data.choices?.[0]?.message?.content) {
+        setMessages(prev => [...prev, { 
+          id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, 
+          role: 'assistant', 
+          content: data.choices[0].message.content,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }]);
       }
     } catch (e) {
-      setMessages(prev => [...prev, { role: 'assistant', content: '连接接口失败，请检查配置。' }]);
+      setMessages(prev => [...prev, { 
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, 
+        role: 'assistant', 
+        content: '连接接口失败，请检查配置。',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
     } finally {
       setIsTyping(false);
     }
@@ -319,7 +381,7 @@ export default function App() {
               <button 
                 onClick={() => {
                   const name = prompt('输入新角色名称:');
-                  if (name) setCharacters([{ id: Date.now().toString(), name, avatar: '', notes: '新加入的角色' }, ...characters]);
+                  if (name) setCharacters(prev => [{ id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, name, avatar: '', notes: '新加入的角色' }, ...prev]);
                 }}
                 className="w-full py-5 border border-dashed border-zinc-100 bg-zinc-50/50 rounded-3xl text-zinc-400 font-bold flex items-center justify-center gap-2 hover:bg-white hover:border-zinc-900 hover:text-zinc-900 transition-all mb-8 shadow-sm"
               >
@@ -368,7 +430,7 @@ export default function App() {
                 <button 
                   onClick={() => {
                     const content = prompt('发布新动态：');
-                    if (content) setPosts([{ id: Date.now().toString(), content, date: '刚刚', type: 'user' }, ...posts]);
+                    if (content) setPosts(prev => [{ id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, content, date: '刚刚', type: 'user' }, ...prev]);
                   }}
                   className="bg-zinc-900 text-white text-xs px-4 py-2 rounded-xl font-bold"
                 >
@@ -392,7 +454,7 @@ export default function App() {
               ))}
               
               <button 
-                onClick={() => setPosts([{ id: Date.now().toString(), content: 'AI 自动发现：这是一个美好的瞬间。', date: '刚刚', type: 'ai' }, ...posts])}
+                onClick={() => setPosts(prev => [{ id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, content: 'AI 自动发现：这是一个美好的瞬间。', date: '刚刚', type: 'ai' }, ...prev])}
                 className="w-full py-4 border border-dashed border-indigo-200 text-indigo-500 bg-indigo-50/30 rounded-2xl text-xs font-bold"
               >
                 + 让 AI 发布动态
@@ -449,7 +511,52 @@ export default function App() {
             <div 
               className="flex-1 overflow-y-auto p-6 space-y-6 bg-zinc-50/50 relative"
               style={chatSettings[selectedChat.id]?.background ? { backgroundImage: `url(${chatSettings[selectedChat.id]?.background})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
+              onClick={() => {
+                setContextMenu(null);
+                if (!isMultiSelectMode) setSelectedMessageIds([]);
+              }}
             >
+              {/* 消息长按菜单 */}
+              <AnimatePresence>
+                {contextMenu && (
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    className="fixed z-[100] bg-zinc-900 text-white rounded-2xl shadow-2xl py-2 w-32 border border-zinc-800"
+                    style={{ left: contextMenu.x, top: Math.min(contextMenu.y, window.innerHeight - 200) }}
+                  >
+                    <ContextItem label="撤回" onClick={() => {
+                      setMessages(messages.filter(m => m.id !== contextMenu.msgId));
+                      setContextMenu(null);
+                    }} />
+                    <ContextItem label="编辑" onClick={() => {
+                      const msg = messages.find(m => m.id === contextMenu.msgId);
+                      if (msg) {
+                        setEditingMessageId(msg.id);
+                        setInputMessage(msg.content);
+                      }
+                      setContextMenu(null);
+                    }} />
+                    <ContextItem label="多选" onClick={() => {
+                      setIsMultiSelectMode(true);
+                      setSelectedMessageIds([contextMenu.msgId]);
+                      setContextMenu(null);
+                    }} />
+                    <ContextItem label="引用" onClick={() => {
+                      const msg = messages.find(m => m.id === contextMenu.msgId);
+                      if (msg) setQuotedMessage(msg);
+                      setContextMenu(null);
+                    }} />
+                    <div className="border-t border-zinc-800 my-1" />
+                    <ContextItem label="删除" color="text-red-400" onClick={() => {
+                      setMessages(messages.filter(m => m.id !== contextMenu.msgId));
+                      setContextMenu(null);
+                    }} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* 注入聊天室专用 CSS */}
               {chatSettings[selectedChat.id]?.customCss && (
                 <style>{chatSettings[selectedChat.id]?.customCss}</style>
@@ -462,7 +569,30 @@ export default function App() {
               )}
               
               {messages.map((msg, index) => (
-                <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} items-end gap-2`}>
+                <div 
+                  key={msg.id} 
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} items-end gap-2 group relative`}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ x: e.clientX, y: e.clientY, msgId: msg.id });
+                  }}
+                  onPointerDown={(e) => {
+                    // 简单的移动端长按检测
+                    const timer = setTimeout(() => {
+                      setContextMenu({ x: e.clientX, y: e.clientY, msgId: msg.id });
+                    }, 600);
+                    e.currentTarget.addEventListener('pointerup', () => clearTimeout(timer), { once: true });
+                  }}
+                >
+                  {isMultiSelectMode && (
+                    <div 
+                      onClick={() => setSelectedMessageIds(prev => prev.includes(msg.id) ? prev.filter(id => id !== msg.id) : [...prev, msg.id])}
+                      className={`w-5 h-5 rounded-full border flex items-center justify-center cursor-pointer mb-2 transition-all ${selectedMessageIds.includes(msg.id) ? 'bg-zinc-900 border-zinc-900' : 'border-zinc-300'}`}
+                    >
+                      {selectedMessageIds.includes(msg.id) && <Check size={10} className="text-white" />}
+                    </div>
+                  )}
+
                   {msg.role === 'assistant' && (
                     <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-zinc-50 overflow-hidden shrink-0 shadow-sm">
                       {chatSettings[selectedChat.id]?.charAvatar || selectedChat.avatar ? (
@@ -472,8 +602,9 @@ export default function App() {
                       )}
                     </div>
                   )}
-                  <div className={`max-w-[75%] p-4 ${msg.role === 'user' ? 'bg-zinc-900 text-white rounded-3xl rounded-tr-sm' : 'bg-white text-zinc-800 border border-gray-100 rounded-3xl rounded-tl-sm shadow-xl shadow-zinc-100/50'} text-sm font-medium leading-relaxed`}>
+                  <div className={`relative max-w-[75%] p-4 ${msg.role === 'user' ? 'bg-zinc-900 text-white rounded-3xl rounded-tr-sm' : 'bg-white text-zinc-800 border border-gray-100 rounded-3xl rounded-tl-sm shadow-xl shadow-zinc-100/50'} text-sm font-medium leading-relaxed`}>
                     {msg.content}
+                    {msg.isEdited && <span className="absolute -bottom-4 right-2 text-[8px] text-zinc-400 opacity-50 italic">已编辑</span>}
                   </div>
                   {msg.role === 'user' && (
                     <div className="w-9 h-9 rounded-xl bg-zinc-100 border border-zinc-50 overflow-hidden shrink-0 shadow-sm">
@@ -501,7 +632,41 @@ export default function App() {
             </div>
 
             {/* 输入栏 */}
-            <div className="p-6 pb-12 flex flex-col gap-3 bg-white">
+            <div className="p-6 pb-12 flex flex-col gap-3 bg-white relative">
+              {/* 引用/编辑预览区域 */}
+              <AnimatePresence>
+                {(quotedMessage || editingMessageId || isMultiSelectMode) && (
+                  <motion.div 
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: 20, opacity: 0 }}
+                    className="absolute bottom-full left-6 right-6 mb-2 p-4 bg-zinc-900 text-white rounded-2xl shadow-xl flex items-center justify-between"
+                  >
+                    <div className="flex flex-col overflow-hidden">
+                      <span className="text-[10px] font-black uppercase tracking-tighter opacity-50">
+                        {isMultiSelectMode ? `已选择 ${selectedMessageIds.length} 条消息` : editingMessageId ? '正在编辑...' : '引用消息'}
+                      </span>
+                      {!isMultiSelectMode && <span className="text-xs truncate italic">{editingMessageId ? messages.find(m => m.id === editingMessageId)?.content : quotedMessage?.content}</span>}
+                    </div>
+                    <div className="flex gap-2">
+                       {isMultiSelectMode && (
+                         <button onClick={() => {
+                           setMessages(messages.filter(m => !selectedMessageIds.includes(m.id)));
+                           setIsMultiSelectMode(false);
+                           setSelectedMessageIds([]);
+                         }} className="p-2 bg-red-500 rounded-lg"><Trash2 size={14}/></button>
+                       )}
+                       <button onClick={() => {
+                        setQuotedMessage(null);
+                        setEditingMessageId(null);
+                        setIsMultiSelectMode(false);
+                        setSelectedMessageIds([]);
+                        if (editingMessageId) setInputMessage('');
+                      }} className="p-2 bg-zinc-800 rounded-lg"><X size={14}/></button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               {isPlusMenuOpen && (
                 <motion.div 
                   initial={{ y: 20, opacity: 0 }}
@@ -509,7 +674,7 @@ export default function App() {
                   className="grid grid-cols-4 gap-4 p-6 bg-zinc-50 rounded-[2rem] border border-gray-100"
                 >
                   <PlusMenuItem icon={CreditCard} label="转账" onClick={() => alert('模拟转账系统已启动')} />
-                  <PlusMenuItem icon={Mic} label="语音" onClick={() => setMessages([...messages, { role: 'user', content: '🎤 语音 0:05' }])} />
+                  <PlusMenuItem icon={Mic} label="语音" onClick={() => setMessages(prev => [...prev, { id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, role: 'user', content: '🎤 语音 0:05', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }])} />
                   <PlusMenuItem icon={Smile} label="表情" onClick={() => alert('在这里选择表情包')} />
                   <PlusMenuItem icon={ImageIcon} label="图库" onClick={() => alert('从本地选择图片')} />
                 </motion.div>
@@ -585,32 +750,28 @@ export default function App() {
                   <motion.div 
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
-                    className="mt-6 p-4 bg-white border border-gray-100 rounded-3xl space-y-3 shadow-lg shadow-gray-100"
+                    className="mt-6 p-4 bg-white border border-gray-100 rounded-3xl space-y-6 shadow-lg shadow-gray-100"
                   >
                     <label className="block">
-                      <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">昵称</span>
+                      <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">用户昵称</span>
                       <input 
                         type="text" 
                         value={userProfile.name}
                         onChange={(e) => setUserProfile({ ...userProfile, name: e.target.value })}
-                        className="w-full bg-zinc-50 border-none rounded-2xl p-3 text-sm focus:ring-1 focus:ring-zinc-200 mt-1" 
+                        className="w-full bg-zinc-50 border-none rounded-2xl p-4 text-sm focus:ring-1 focus:ring-zinc-200 mt-1" 
                       />
                     </label>
-                    <label className="block">
-                      <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">头像 URL</span>
-                      <input 
-                        type="text" 
-                        placeholder="本地路径或图床链接"
-                        value={userProfile.avatar}
-                        onChange={(e) => setUserProfile({ ...userProfile, avatar: e.target.value })}
-                        className="w-full bg-zinc-50 border-none rounded-2xl p-3 text-sm focus:ring-1 focus:ring-zinc-200 mt-1" 
-                      />
-                    </label>
+                    
+                    <ImageUploader 
+                      label="更换头像" 
+                      onUpload={(url: string) => setUserProfile({ ...userProfile, avatar: url })} 
+                    />
+
                     <button 
                       onClick={() => setIsProfileEditing(false)}
-                      className="w-full bg-zinc-900 text-white text-xs py-4 rounded-2xl font-bold uppercase tracking-widest active:scale-95 transition-all"
+                      className="w-full bg-zinc-900 text-white text-xs py-5 rounded-2xl font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-zinc-200"
                     >
-                      完成设置
+                      Update Identity
                     </button>
                   </motion.div>
                 )}
@@ -624,7 +785,7 @@ export default function App() {
                     <SidebarItem icon={Palette} label="美化" onClick={() => setSidebarView('beauty')} />
                     <SidebarItem icon={CalendarIcon} label="日历" onClick={() => setSidebarView('calendar')} />
                     <SidebarItem icon={BookOpen} label="课表" onClick={() => setSidebarView('schedule')} />
-                    <SidebarItem icon={Bell} label="后台弹窗" onClick={() => setSidebarView('popup')} />
+                    <SidebarItem icon={Smile} label="表情包" onClick={() => setSidebarView('stickers')} />
                   </div>
                 ) : (
                   <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
@@ -683,58 +844,128 @@ export default function App() {
 
                     {sidebarView === 'beauty' && (
                       <div className="space-y-4 p-2">
-                        <h3 className="font-bold flex items-center gap-2"><Palette size={18}/> 界面美化</h3>
+                        <h3 className="font-bold flex items-center gap-2 tracking-widest text-xs uppercase"><Palette size={18}/> Beauty Laboratory</h3>
                         <textarea 
-                          className="w-full h-40 bg-gray-50 border-none rounded-xl p-3 text-xs font-mono"
-                          placeholder="/* 输入全局CSS代码 */"
+                          className="w-full h-48 bg-zinc-50 border-none rounded-2xl p-4 text-xs font-mono focus:ring-1 focus:ring-zinc-900"
+                          placeholder="/* 注入全局 CSS 样式 */"
                           value={customStyle}
                           onChange={(e) => setCustomStyle(e.target.value)}
                         />
-                        <div className="grid grid-cols-1 gap-2">
-                          <button className="text-xs p-5 bg-zinc-900 text-white rounded-[1.5rem] font-black uppercase tracking-widest active:scale-95 transition-all" onClick={() => alert('样式已保存到元数据')}>Save Metadata</button>
+                        <div className="flex gap-2">
+                          <button 
+                            className="flex-1 text-[10px] p-4 bg-zinc-900 text-white rounded-xl font-black uppercase tracking-widest active:scale-95 transition-all"
+                            onClick={() => {
+                              const name = prompt('为当前预设命名:');
+                              if (name) {
+                                setBeautyPresets(prev => [...prev, { id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, name, css: customStyle }]);
+                              }
+                            }}
+                          >
+                            Save Preset
+                          </button>
+                        </div>
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                           {beautyPresets.map(p => (
+                             <div key={p.id} className="flex items-center justify-between p-3 bg-zinc-50 rounded-xl hover:bg-zinc-100 transition-colors group">
+                               <div 
+                                 className="flex-1 cursor-pointer"
+                                 onClick={() => setCustomStyle(p.css)}
+                               >
+                                 <span className="text-xs font-bold text-zinc-700">{p.name}</span>
+                               </div>
+                               {p.id !== 'default' && (
+                                 <button onClick={() => setBeautyPresets(beautyPresets.filter(i => i.id !== p.id))} className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                   <Trash2 size={12} />
+                                 </button>
+                               )}
+                             </div>
+                           ))}
                         </div>
                       </div>
                     )}
 
                 {sidebarView === 'calendar' && (
-                  <div className="space-y-6">
-                    <h3 className="font-black text-xs tracking-widest uppercase">Plan & Momentum</h3>
-                    <div className="bg-zinc-900 rounded-[2.5rem] p-8 text-white aspect-[4/3] flex flex-col justify-between shadow-2xl shadow-zinc-200">
-                      <div className="flex justify-between items-start">
-                        <span className="text-4xl font-black italic tracking-tighter">08</span>
-                        <span className="text-[10px] font-mono tracking-widest opacity-40">MAY / Fri</span>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-[10px] uppercase font-bold text-zinc-500">Upcoming Today</p>
-                        <p className="text-sm font-medium">{todos.filter(t => !t.completed).length} 件未决事项同步中</p>
+                  <div className="space-y-6 pb-20">
+                    <div className="flex justify-between items-center px-2">
+                      <h3 className="font-black text-xs tracking-widest uppercase">Temporal Grid</h3>
+                      <div className="flex gap-2 items-center">
+                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))} className="p-1 hover:bg-zinc-100 rounded-lg"><ChevronRight size={14} className="rotate-180 text-zinc-300" /></button>
+                        <span className="text-[10px] font-black">{currentDate.getFullYear()} {currentDate.getMonth() + 1}M</span>
+                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))} className="p-1 hover:bg-zinc-100 rounded-lg"><ChevronRight size={14} className="text-zinc-300" /></button>
                       </div>
                     </div>
+
+                    {/* 经典月历视图 */}
+                    <div className="bg-zinc-50 rounded-3xl p-4 border border-zinc-100">
+                      <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                        {['日', '一', '二', '三', '四', '五', '六'].map(d => (
+                          <div key={d} className="text-[8px] font-bold text-zinc-300">{d}</div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-7 gap-1">
+                        {(() => {
+                          const year = currentDate.getFullYear();
+                          const month = currentDate.getMonth();
+                          const firstDay = new Date(year, month, 1).getDay();
+                          const daysInMonth = new Date(year, month + 1, 0).getDate();
+                          const cells = [];
+                          for (let i = 0; i < firstDay; i++) cells.push(<div key={`empty-${i}`} />);
+                          for (let d = 1; d <= daysInMonth; d++) {
+                            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                            const dayTodos = todos.filter(t => t.date === dateStr);
+                            cells.push(
+                              <div 
+                                key={d} 
+                                onClick={() => {
+                                  const text = prompt(`${dateStr} 的新待办:`);
+                                  if (text) setTodos(prev => [...prev, { id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, text, completed: false, color: PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)], date: dateStr }]);
+                                }}
+                                className={`aspect-square flex flex-col items-center justify-center text-[10px] rounded-xl transition-all cursor-pointer relative group ${new Date().toDateString() === new Date(year, month, d).toDateString() ? 'bg-zinc-900 text-white shadow-lg' : 'hover:bg-zinc-200'}`}
+                              >
+                                <span className="z-1">{d}</span>
+                                {dayTodos.length > 0 && (
+                                  <div className="flex gap-0.5 mt-0.5">
+                                    {dayTodos.slice(0, 3).map(t => <div key={t.id} className="w-1 h-1 rounded-full" style={{ backgroundColor: t.color }} />)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                          return cells;
+                        })()}
+                      </div>
+                    </div>
+
                     <div className="space-y-3">
+                      <p className="text-[10px] font-black text-zinc-300 uppercase tracking-widest px-2">Current Plans</p>
+                      {todos.length === 0 && <div className="text-center py-10 text-zinc-200 text-xs italic">No agendas created...</div>}
                       {todos.map(t => (
-                        <div key={t.id} className="flex items-center gap-3 p-5 bg-zinc-50 rounded-[2rem] border border-zinc-100/50 group">
+                        <div key={t.id} className="flex items-center gap-3 p-4 bg-zinc-50 rounded-[2rem] border border-zinc-100 shadow-sm group">
                           <button 
                             onClick={() => setTodos(todos.map(i => i.id === t.id ? {...i, completed: !i.completed} : i))}
-                            className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${t.completed ? 'bg-zinc-900 border-zinc-900 shadow-lg' : 'border-zinc-200 hover:border-zinc-400'}`}
+                            className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${t.completed ? 'bg-zinc-900 border-zinc-900' : 'border-zinc-200'}`}
                             style={{ backgroundColor: t.completed ? t.color : 'transparent' }}
                           >
                             {t.completed && <Check size={14} className="text-white" />}
                           </button>
-                          <span className={`text-xs font-bold transition-all ${t.completed ? 'text-zinc-300 line-through' : 'text-zinc-700'}`}>{t.text}</span>
+                          <div className="flex flex-col">
+                            <span className={`text-xs font-bold ${t.completed ? 'text-zinc-300 line-through' : 'text-zinc-800'}`}>{t.text}</span>
+                            {t.date && <span className="text-[8px] font-mono text-zinc-300">{t.date}</span>}
+                          </div>
                           <button onClick={() => setTodos(todos.filter(i => i.id !== t.id))} className="ml-auto opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-red-500 transition-all">
                             <Trash2 size={14} />
                           </button>
                         </div>
                       ))}
-                      <input 
-                        onKeyDown={(e) => { 
-                          if (e.key === 'Enter' && e.currentTarget.value.trim()) { 
-                            setTodos([...todos, { id: Date.now().toString(), text: e.currentTarget.value, completed: false, color: PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)] }]); 
-                            e.currentTarget.value = ''; 
-                          } 
-                        }}
-                        className="w-full bg-white border border-zinc-100 rounded-[2rem] p-5 text-[10px] font-black uppercase tracking-widest text-center focus:ring-1 focus:ring-zinc-900 transition-all" 
-                        placeholder="+ ADD NEW MOMENTUM" 
-                      />
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-2 p-4 bg-zinc-50 rounded-3xl">
+                      {PRESET_COLORS.map(c => (
+                        <div key={c} className="aspect-square rounded-full cursor-pointer hover:scale-125 transition-all border-2 border-white" style={{ backgroundColor: c }} onClick={() => {
+                          const hex = prompt('自定义颜色:', c);
+                          if (hex && hex.startsWith('#')) alert('预设颜色将在下次添加时生效');
+                        }} />
+                      ))}
                     </div>
                   </div>
                 )}
@@ -762,8 +993,8 @@ export default function App() {
                                       if (name === '') { setCourses(courses.filter(c => !(c.day === day && c.period === period))); return; }
                                       const color = prompt('输入 Hex 颜色代码:', course?.color || '#18181b');
                                       const room = prompt('教师/地点:', course?.room || '');
-                                      const newC = { id: Math.random().toString(), name, day, period, color: color || '#18181b', room: room || '' };
-                                      setCourses([...courses.filter(c => !(c.day === day && c.period === period)), newC]);
+                                      const newC = { id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, name, day, period, color: color || '#18181b', room: room || '' };
+                                      setCourses(prev => [...prev.filter(c => !(c.day === day && c.period === period)), newC]);
                                     }}
                                     className="aspect-square rounded-md border border-white/50 transition-all cursor-pointer hover:scale-110 active:scale-95"
                                     style={{ backgroundColor: course ? course.color : '#f4f4f5' }}
@@ -788,16 +1019,29 @@ export default function App() {
                       </div>
                     )}
 
-                    {sidebarView === 'popup' && (
-                      <div className="space-y-4 p-2">
-                        <h3 className="font-bold flex items-center gap-2"><Bell size={18}/> 模拟弹窗</h3>
-                        <p className="text-xs text-gray-400">在此处可以测试和配置系统的推送提醒效果。</p>
-                        <button 
-                          onClick={() => alert('这是一个模拟后台弹窗的效果！')}
-                          className="w-full py-3 bg-black text-white rounded-2xl text-sm"
-                        >
-                          立即触发测试弹窗
-                        </button>
+                    {sidebarView === 'stickers' && (
+                      <div className="space-y-6 p-2 pb-20">
+                        <div className="flex justify-between items-center">
+                          <h3 className="font-black text-xs tracking-widest uppercase">Sticker Hub</h3>
+                          <button onClick={handleImportStickers} className="p-2 bg-zinc-900 text-white rounded-xl active:scale-90 transition-all">
+                             <PlusCircle size={16} />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-4 gap-3">
+                           {stickers.map(s => (
+                             <div key={s.id} className="aspect-square bg-zinc-50 rounded-xl overflow-hidden border border-zinc-100 flex items-center justify-center relative group">
+                               <img src={s.url} className="w-[80%] h-[80%] object-contain" alt={s.name} />
+                               <button onClick={() => setStickers(stickers.filter(i => i.id !== s.id))} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center text-white">
+                                 <X size={16} />
+                               </button>
+                             </div>
+                           ))}
+                        </div>
+                        <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100">
+                          <p className="text-[10px] font-bold text-zinc-300 uppercase leading-relaxed">
+                            💡 提示：点击右上角 "+" 导入格式为 "描述:链接" 的表情包。
+                          </p>
+                        </div>
                       </div>
                     )}
                   </motion.div>
@@ -843,6 +1087,14 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
 }
 
 // --- 基础组件 ---
+
+function ContextItem({ label, onClick, color = 'text-white' }: { label: string, onClick: () => void, color?: string }) {
+  return (
+    <button onClick={onClick} className={`w-full px-4 py-2 text-left text-xs font-bold hover:bg-zinc-800 transition-colors ${color}`}>
+      {label}
+    </button>
+  );
+}
 
 function NavButton({ active, icon: Icon, label, onClick }: { active: boolean, icon: any, label: string, onClick: () => void }) {
   return (
