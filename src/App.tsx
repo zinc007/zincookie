@@ -17,7 +17,14 @@ import {
   Plus,
   Send,
   MoreVertical,
-  X
+  X,
+  Smile,
+  CreditCard,
+  Mic,
+  Image as ImageIcon,
+  BookOpen,
+  PlusCircle,
+  Settings2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -28,7 +35,31 @@ interface TodoItem {
   id: string;
   text: string;
   completed: boolean;
-  color: string; // 预设颜色
+  color: string;
+  date?: string; // YYYY-MM-DD
+}
+
+interface Course {
+  id: string;
+  name: string;
+  room: string;
+  day: number; // 0-6 (Sun-Sat)
+  time: string;
+}
+
+interface Sticker {
+  id: string;
+  name: string;
+  url: string;
+}
+
+interface ChatSettings {
+  [chatId: string]: {
+    charAvatar?: string;
+    userAvatar?: string;
+    background?: string;
+    customCss?: string;
+  }
 }
 
 interface ApiSettings {
@@ -49,7 +80,37 @@ export default function App() {
   const [isProfileEditing, setIsProfileEditing] = useState(false);
   
   // 侧边栏子菜单状态
-  const [sidebarView, setSidebarView] = useState<'main' | 'settings' | 'beauty' | 'calendar' | 'popup'>('main');
+  const [sidebarView, setSidebarView] = useState<'main' | 'settings' | 'beauty' | 'calendar' | 'popup' | 'schedule'>('main');
+
+  // 用户资料状态
+  const [userProfile, setUserProfile] = useState({
+    name: 'User Name',
+    status: 'ID_2026.0508',
+    avatar: '' // URL or empty for default
+  });
+
+  // 聊天室设置
+  const [chatSettings, setChatSettings] = useState<ChatSettings>({});
+  const [isChatSettingsOpen, setIsChatSettingsOpen] = useState(false);
+  const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
+
+  // 课表状态
+  const [courses, setCourses] = useState<Course[]>([
+    { id: '1', name: '高等数学', room: '101', day: 1, time: '08:00' },
+    { id: '2', name: '大学物理', room: '202', day: 3, time: '14:00' }
+  ]);
+
+  // 表情包预览数据
+  const [stickers] = useState<Sticker[]>([
+    { id: '1', name: '开心', url: 'https://cdn-icons-png.flaticon.com/512/2590/2590525.png' },
+    { id: '2', name: '点赞', url: 'https://cdn-icons-png.flaticon.com/512/1791/1791330.png' }
+  ]);
+
+  // 空间动态
+  const [posts, setPosts] = useState<{id: string, content: string, date: string, type: 'user' | 'ai'}[]>([
+    { id: '1', content: '今天的天气真不错！', date: '5月8日', type: 'user' },
+    { id: '2', content: 'AI 自动生成的动态：生活总是充满希望。', date: '5月8日', type: 'ai' }
+  ]);
 
   // 聊天对话状态
   const [messages, setMessages] = useState<{role: 'user' | 'assistant', content: string}[]>([]);
@@ -253,15 +314,42 @@ export default function App() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="p-8 flex flex-col items-center justify-center h-full text-center"
+              className="p-6 space-y-6"
             >
-              <Orbit size={48} className="text-black mb-4 animate-pulse" />
-              <h2 className="text-xl font-bold mb-2">空间模块</h2>
-              <p className="text-gray-400 text-sm">这里可以放置动态、发现或社区内容</p>
-              <div className="mt-8 grid grid-cols-2 gap-4 w-full">
-                <div className="aspect-square bg-gray-100 rounded-2xl animate-pulse"></div>
-                <div className="aspect-square bg-gray-100 rounded-2xl animate-pulse"></div>
+              <div className="flex justify-between items-center bg-white p-4 rounded-3xl shadow-sm border border-gray-50">
+                <span className="font-bold text-zinc-800">所有动态</span>
+                <button 
+                  onClick={() => {
+                    const content = prompt('发布新动态：');
+                    if (content) setPosts([{ id: Date.now().toString(), content, date: '刚刚', type: 'user' }, ...posts]);
+                  }}
+                  className="bg-zinc-900 text-white text-xs px-4 py-2 rounded-xl font-bold"
+                >
+                  发布
+                </button>
               </div>
+
+              {posts.map(post => (
+                <div key={post.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-50 group">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className={`w-10 h-10 rounded-xl ${post.type === 'ai' ? 'bg-indigo-500' : 'bg-zinc-900'} flex items-center justify-center text-white text-xs font-bold`}>
+                      {post.type === 'ai' ? 'AI' : 'ME'}
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm">{post.type === 'ai' ? '智能助手' : userProfile.name}</div>
+                      <div className="text-[10px] text-zinc-300 font-mono italic">{post.date}</div>
+                    </div>
+                  </div>
+                  <p className="text-sm text-zinc-600 leading-relaxed">{post.content}</p>
+                </div>
+              ))}
+              
+              <button 
+                onClick={() => setPosts([{ id: Date.now().toString(), content: 'AI 自动发现：这是一个美好的瞬间。', date: '刚刚', type: 'ai' }, ...posts])}
+                className="w-full py-4 border border-dashed border-indigo-200 text-indigo-500 bg-indigo-50/30 rounded-2xl text-xs font-bold"
+              >
+                + 让 AI 发布动态
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -293,13 +381,75 @@ export default function App() {
                 <span className="font-bold text-zinc-900 text-sm tracking-tight">{selectedChat}</span>
                 <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1">• 在线</span>
               </div>
-              <button className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400">
-                <MoreVertical size={20} />
+              <button 
+                onClick={() => setIsChatSettingsOpen(true)}
+                className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400"
+              >
+                <Settings2 size={20} />
               </button>
             </div>
 
-            {/* 消息区域 */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-zinc-50/50">
+            {/* 聊天设置模态窗 */}
+            <AnimatePresence>
+              {isChatSettingsOpen && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="absolute inset-0 bg-white/95 backdrop-blur-md z-[70] p-10 flex flex-col pt-24"
+                >
+                  <button onClick={() => setIsChatSettingsOpen(false)} className="absolute top-12 right-10 p-2 bg-zinc-100 rounded-full">
+                    <X size={20} />
+                  </button>
+                  <h3 className="text-xl font-black mb-8">CHAT SETTINGS</h3>
+                  <div className="space-y-6 overflow-y-auto pr-2">
+                    <label className="block">
+                      <span className="text-xs font-bold text-zinc-400 uppercase">角色头像 URL</span>
+                      <input 
+                        className="w-full bg-zinc-50 rounded-2xl p-4 text-sm mt-1 focus:ring-1 focus:ring-zinc-900 border-none"
+                        value={chatSettings[selectedChat!]?.charAvatar || ''}
+                        onChange={(e) => setChatSettings({ ...chatSettings, [selectedChat!]: { ...chatSettings[selectedChat!], charAvatar: e.target.value } })}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-bold text-zinc-400 uppercase">我的头像 (仅此聊天)</span>
+                      <input 
+                        className="w-full bg-zinc-50 rounded-2xl p-4 text-sm mt-1 focus:ring-1 focus:ring-zinc-900 border-none"
+                        value={chatSettings[selectedChat!]?.userAvatar || ''}
+                        onChange={(e) => setChatSettings({ ...chatSettings, [selectedChat!]: { ...chatSettings[selectedChat!], userAvatar: e.target.value } })}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-bold text-zinc-400 uppercase">背景图片 URL</span>
+                      <input 
+                        className="w-full bg-zinc-50 rounded-2xl p-4 text-sm mt-1 focus:ring-1 focus:ring-zinc-900 border-none"
+                        value={chatSettings[selectedChat!]?.background || ''}
+                        onChange={(e) => setChatSettings({ ...chatSettings, [selectedChat!]: { ...chatSettings[selectedChat!], background: e.target.value } })}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-bold text-zinc-400 uppercase">个性化 CSS 美化</span>
+                      <textarea 
+                        className="w-full h-32 bg-zinc-50 rounded-2xl p-4 text-xs font-mono mt-1 focus:ring-1 focus:ring-zinc-900 border-none"
+                        value={chatSettings[selectedChat!]?.customCss || ''}
+                        onChange={(e) => setChatSettings({ ...chatSettings, [selectedChat!]: { ...chatSettings[selectedChat!], customCss: e.target.value } })}
+                        placeholder=".bubble { border-radius: 0; }"
+                      />
+                    </label>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* 消息区域 (应用背景图) */}
+            <div 
+              className="flex-1 overflow-y-auto p-6 space-y-6 bg-zinc-50/50 relative"
+              style={chatSettings[selectedChat!]?.background ? { backgroundImage: `url(${chatSettings[selectedChat!]?.background})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
+            >
+              {/* 注入聊天室专用 CSS */}
+              {chatSettings[selectedChat!]?.customCss && (
+                <style>{chatSettings[selectedChat!]?.customCss}</style>
+              )}
               {messages.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-full text-zinc-300">
                   <MessageSquare size={48} className="mb-2 opacity-20" />
@@ -308,10 +458,30 @@ export default function App() {
               )}
               
               {messages.map((msg, index) => (
-                <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-4 ${msg.role === 'user' ? 'bg-zinc-900 text-white rounded-3xl rounded-tr-sm' : 'bg-white text-zinc-800 border border-gray-100 rounded-3xl rounded-tl-sm'} text-sm font-medium leading-relaxed shadow-sm`}>
+                <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} items-end gap-2`}>
+                  {msg.role === 'assistant' && (
+                    <div className="w-8 h-8 rounded-lg bg-zinc-900 flex-shrink-0 overflow-hidden shadow-sm">
+                      {chatSettings[selectedChat!]?.charAvatar ? (
+                        <img src={chatSettings[selectedChat!]?.charAvatar} className="w-full h-full object-cover" alt="char" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-white">{selectedChat![0]}</div>
+                      )}
+                    </div>
+                  )}
+                  <div className={`max-w-[75%] p-4 ${msg.role === 'user' ? 'bg-zinc-900 text-white rounded-3xl rounded-tr-sm' : 'bg-white text-zinc-800 border border-gray-100 rounded-3xl rounded-tl-sm'} text-sm font-medium leading-relaxed shadow-sm`}>
                     {msg.content}
                   </div>
+                  {msg.role === 'user' && (
+                    <div className="w-8 h-8 rounded-lg bg-zinc-100 flex-shrink-0 overflow-hidden shadow-sm">
+                      {chatSettings[selectedChat!]?.userAvatar || userProfile.avatar ? (
+                        <img src={chatSettings[selectedChat!]?.userAvatar || userProfile.avatar} className="w-full h-full object-cover" alt="user" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <User size={14} className="text-zinc-400" />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
               
@@ -327,25 +497,44 @@ export default function App() {
             </div>
 
             {/* 输入栏 */}
-            <div className="p-6 pb-12 flex items-center gap-3 bg-white">
-              <div className="flex-1 bg-zinc-50 border border-gray-100 rounded-2xl flex items-center px-4 py-1">
-                <input 
-                  type="text" 
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder={isTyping ? "正在思考..." : "发送消息..."} 
-                  className="bg-transparent border-none flex-1 py-3 text-sm focus:ring-0 font-medium text-zinc-900" 
-                />
-                <Plus size={18} className="text-zinc-300 ml-2 cursor-pointer" />
+            <div className="p-6 pb-12 flex flex-col gap-3 bg-white">
+              {isPlusMenuOpen && (
+                <motion.div 
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  className="grid grid-cols-4 gap-4 p-6 bg-zinc-50 rounded-[2rem] border border-gray-100"
+                >
+                  <PlusMenuItem icon={CreditCard} label="转账" onClick={() => alert('模拟转账系统已启动')} />
+                  <PlusMenuItem icon={Mic} label="语音" onClick={() => setMessages([...messages, { role: 'user', content: '🎤 语音 0:05' }])} />
+                  <PlusMenuItem icon={Smile} label="表情" onClick={() => alert('在这里选择表情包')} />
+                  <PlusMenuItem icon={ImageIcon} label="图库" onClick={() => alert('从本地选择图片')} />
+                </motion.div>
+              )}
+
+              <div className="flex items-center gap-3">
+                <div className="flex-1 bg-zinc-50 border border-gray-100 rounded-2xl flex items-center px-4 py-1">
+                  <input 
+                    type="text" 
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                    placeholder={isTyping ? "正在思考..." : "发送消息..."} 
+                    className="bg-transparent border-none flex-1 py-3 text-sm focus:ring-0 font-medium text-zinc-900" 
+                  />
+                  <PlusCircle 
+                    size={22} 
+                    className={`ml-2 cursor-pointer transition-transform ${isPlusMenuOpen ? 'rotate-45 text-zinc-900' : 'text-zinc-300 hover:text-zinc-500'}`} 
+                    onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}
+                  />
+                </div>
+                <button 
+                  onClick={handleSendMessage}
+                  disabled={isTyping}
+                  className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                >
+                  <Send size={18} />
+                </button>
               </div>
-              <button 
-                onClick={handleSendMessage}
-                disabled={isTyping}
-                className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-95 transition-all disabled:opacity-50"
-              >
-                <Send size={18} />
-              </button>
             </div>
           </motion.div>
         )}
@@ -370,12 +559,23 @@ export default function App() {
               <div className="p-10 pb-6 pt-20 bg-zinc-50/50">
                 <button 
                   onClick={() => setIsProfileEditing(!isProfileEditing)}
-                  className="w-20 h-20 rounded-[2rem] bg-zinc-900 flex items-center justify-center mb-6 transition-all hover:scale-105 shadow-xl shadow-zinc-200"
+                  className="w-20 h-20 rounded-[2rem] bg-zinc-900 flex items-center justify-center mb-6 transition-all hover:scale-105 shadow-xl shadow-zinc-200 overflow-hidden"
                 >
-                  <User size={40} className="text-white" />
+                  {userProfile.avatar ? (
+                    <img src={userProfile.avatar} className="w-full h-full object-cover" alt="avatar" />
+                  ) : (
+                    <User size={40} className="text-white" />
+                  )}
                 </button>
-                <h2 className="text-2xl font-bold tracking-tight text-zinc-900">User Name</h2>
-                <p className="text-zinc-400 text-xs font-mono mt-1 uppercase tracking-widest">ID_2026.0508</p>
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-bold tracking-tight text-zinc-900">{userProfile.name}</h2>
+                  <input 
+                    type="text" 
+                    value={userProfile.status}
+                    onChange={(e) => setUserProfile({ ...userProfile, status: e.target.value })}
+                    className="bg-transparent border-none p-0 text-zinc-400 text-xs font-mono uppercase tracking-widest focus:ring-0 w-full"
+                  />
+                </div>
 
                 {isProfileEditing && (
                   <motion.div 
@@ -383,8 +583,31 @@ export default function App() {
                     animate={{ height: 'auto', opacity: 1 }}
                     className="mt-6 p-4 bg-white border border-gray-100 rounded-3xl space-y-3 shadow-lg shadow-gray-100"
                   >
-                    <input type="text" placeholder="修改昵称" className="w-full bg-zinc-50 border-none rounded-2xl p-3 text-sm focus:ring-1 focus:ring-zinc-200" />
-                    <button className="w-full bg-zinc-900 text-white text-xs py-4 rounded-2xl font-bold uppercase tracking-widest active:scale-95 transition-all">保存修改</button>
+                    <label className="block">
+                      <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">昵称</span>
+                      <input 
+                        type="text" 
+                        value={userProfile.name}
+                        onChange={(e) => setUserProfile({ ...userProfile, name: e.target.value })}
+                        className="w-full bg-zinc-50 border-none rounded-2xl p-3 text-sm focus:ring-1 focus:ring-zinc-200 mt-1" 
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">头像 URL</span>
+                      <input 
+                        type="text" 
+                        placeholder="本地路径或图床链接"
+                        value={userProfile.avatar}
+                        onChange={(e) => setUserProfile({ ...userProfile, avatar: e.target.value })}
+                        className="w-full bg-zinc-50 border-none rounded-2xl p-3 text-sm focus:ring-1 focus:ring-zinc-200 mt-1" 
+                      />
+                    </label>
+                    <button 
+                      onClick={() => setIsProfileEditing(false)}
+                      className="w-full bg-zinc-900 text-white text-xs py-4 rounded-2xl font-bold uppercase tracking-widest active:scale-95 transition-all"
+                    >
+                      完成设置
+                    </button>
                   </motion.div>
                 )}
               </div>
@@ -396,6 +619,7 @@ export default function App() {
                     <SidebarItem icon={Settings} label="设置" onClick={() => setSidebarView('settings')} />
                     <SidebarItem icon={Palette} label="美化" onClick={() => setSidebarView('beauty')} />
                     <SidebarItem icon={CalendarIcon} label="日历" onClick={() => setSidebarView('calendar')} />
+                    <SidebarItem icon={BookOpen} label="课表" onClick={() => setSidebarView('schedule')} />
                     <SidebarItem icon={Bell} label="后台弹窗" onClick={() => setSidebarView('popup')} />
                   </div>
                 ) : (
@@ -465,11 +689,36 @@ export default function App() {
                     )}
 
                     {sidebarView === 'calendar' && (
-                      <div className="space-y-4 p-2">
-                        <h3 className="font-bold flex items-center gap-2"><CalendarIcon size={18}/> 待办事项</h3>
+                      <div className="space-y-6 p-2">
+                        <h3 className="font-bold flex items-center gap-2"><CalendarIcon size={18}/> 智能日历 & 待办</h3>
+                        
+                        {/* 简易月历视图 */}
+                        <div className="bg-zinc-50 rounded-3xl p-4 border border-zinc-100">
+                          <div className="flex justify-between items-center mb-4 px-2">
+                            <span className="text-xs font-black uppercase">2026 MAY</span>
+                            <div className="flex gap-2">
+                              <span className="w-1 h-1 bg-zinc-300 rounded-full"></span>
+                              <span className="w-1 h-1 bg-zinc-300 rounded-full"></span>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-7 gap-1 text-center">
+                            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => (
+                              <div key={d} className="text-[8px] font-bold text-zinc-300">{d}</div>
+                            ))}
+                            {Array.from({ length: 31 }).map((_, i) => (
+                              <div 
+                                key={i} 
+                                className={`aspect-square flex items-center justify-center text-[10px] rounded-lg transition-colors cursor-pointer ${i + 1 === 8 ? 'bg-zinc-900 text-white font-bold' : 'hover:bg-zinc-200'}`}
+                              >
+                                {i + 1}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
                         <div className="space-y-2">
                           {todos.map(todo => (
-                            <div key={todo.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                            <div key={todo.id} className="flex items-center gap-3 p-3 bg-white border border-zinc-50 rounded-xl shadow-sm">
                               <button 
                                 onClick={() => toggleTodo(todo.id)}
                                 className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors`}
@@ -477,13 +726,13 @@ export default function App() {
                               >
                                 {todo.completed && <X size={12} className="text-white" />}
                               </button>
-                              <span className={`text-sm ${todo.completed ? 'line-through text-gray-300' : ''}`}>{todo.text}</span>
+                              <span className={`text-sm font-medium ${todo.completed ? 'line-through text-zinc-200' : 'text-zinc-700'}`}>{todo.text}</span>
                             </div>
                           ))}
                         </div>
                         <div className="pt-4 border-t border-gray-100">
                           <input 
-                            className="w-full bg-gray-50 border-none rounded-xl p-3 text-sm mb-2" 
+                            className="w-full bg-zinc-50 border-none rounded-xl p-4 text-sm mb-3 focus:ring-1 focus:ring-zinc-200" 
                             placeholder="新增待办..."
                             onKeyDown={e => {
                               if (e.key === 'Enter') {
@@ -492,12 +741,48 @@ export default function App() {
                               }
                             }}
                           />
-                          <div className="flex gap-2 justify-center">
-                            {PRESET_COLORS.map(c => (
-                              <div key={c} className="w-6 h-6 rounded-full cursor-pointer hover:scale-110" style={{ backgroundColor: c }} />
-                            ))}
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex gap-2 flex-wrap justify-center">
+                              {PRESET_COLORS.map(c => (
+                                <div key={c} className="w-6 h-6 rounded-full cursor-pointer hover:scale-125 transition-transform" style={{ backgroundColor: c }} />
+                              ))}
+                            </div>
+                            <input 
+                              type="color" 
+                              className="w-8 h-8 rounded-full border-none p-0 bg-transparent cursor-pointer"
+                              onChange={(e) => console.log('Selected color:', e.target.value)}
+                            />
                           </div>
                         </div>
+                      </div>
+                    )}
+
+                    {sidebarView === 'schedule' && (
+                      <div className="space-y-6 p-2">
+                        <h3 className="font-bold flex items-center gap-2"><BookOpen size={18}/> 每周课表</h3>
+                        <div className="space-y-3">
+                          {['周一', '周二', '周三', '周四', '周五'].map((day, i) => (
+                            <div key={day} className="bg-zinc-50 rounded-[2rem] p-5 border border-zinc-100">
+                              <div className="text-[10px] font-black uppercase text-zinc-300 mb-3 tracking-widest">{day}</div>
+                              {courses.filter(c => c.day === i + 1).length > 0 ? (
+                                courses.filter(c => c.day === i + 1).map(c => (
+                                  <div key={c.id} className="flex justify-between items-center py-2 border-b border-zinc-100 last:border-none">
+                                    <div>
+                                      <div className="text-sm font-bold text-zinc-800">{c.name}</div>
+                                      <div className="text-[10px] text-zinc-400">@{c.room}</div>
+                                    </div>
+                                    <div className="text-[10px] font-mono text-zinc-400">{c.time}</div>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-[10px] text-zinc-200 italic">No classes scheduled</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <button className="w-full py-4 border-2 border-dashed border-zinc-200 text-zinc-300 rounded-2xl text-xs font-bold hover:border-zinc-900 hover:text-zinc-900 transition-all">
+                          + 编辑或导入课表
+                        </button>
                       </div>
                     )}
 
@@ -552,15 +837,29 @@ function SidebarItem({ icon: Icon, label, onClick }: { icon: any, label: string,
   return (
     <button 
       onClick={onClick}
-      className="w-full flex items-center justify-between p-4 bg-white border border-transparent hover:border-gray-50 hover:bg-gray-50/50 rounded-2xl transition-all group active:scale-95 mt-1"
+      className="w-full flex items-center justify-between p-4 bg-white border border-transparent hover:border-zinc-50 hover:bg-zinc-50/50 rounded-2xl transition-all group active:scale-95 mt-1"
     >
       <div className="flex items-center gap-4">
-        <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center group-hover:bg-zinc-900 group-hover:text-white transition-all">
+        <div className="w-10 h-10 rounded-xl bg-zinc-50 flex items-center justify-center group-hover:bg-zinc-900 group-hover:text-white transition-all">
           <Icon size={20} />
         </div>
         <span className="font-bold text-sm text-zinc-700">{label}</span>
       </div>
       <ChevronRight size={16} className="text-zinc-300" />
+    </button>
+  );
+}
+
+function PlusMenuItem({ icon: Icon, label, onClick }: { icon: any, label: string, onClick: () => void }) {
+  return (
+    <button 
+      onClick={onClick}
+      className="flex flex-col items-center justify-center gap-2 group active:scale-90 transition-transform"
+    >
+      <div className="w-12 h-12 bg-white rounded-2xl border border-gray-100 flex items-center justify-center text-zinc-400 group-hover:text-zinc-900 group-hover:shadow-sm transition-all">
+        <Icon size={20} />
+      </div>
+      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{label}</span>
     </button>
   );
 }
