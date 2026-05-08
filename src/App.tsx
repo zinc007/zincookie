@@ -166,19 +166,19 @@ export default function App() {
       <div className="fixed inset-0 pointer-events-none z-[-1] bg-white transition-colors duration-500" />
 
       {/* 顶部栏 */}
-      <header className="flex items-center justify-between px-4 pt-12 pb-4 border-b-2 border-black sticky top-0 bg-white z-10">
+      <header className="flex items-center justify-between px-6 pt-12 pb-4 border-b border-gray-100 sticky top-0 bg-white/80 backdrop-blur-md z-10">
         <button 
           onClick={() => {
             setIsSidebarOpen(true);
             setSidebarView('main');
           }}
-          className="w-10 h-10 border-2 border-black bg-gray-100 flex items-center justify-center overflow-hidden hover:translate-x-1 hover:-translate-y-1 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
+          className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center overflow-hidden hover:bg-gray-100 transition-all shadow-sm group"
         >
-          <div className="bg-black w-full h-full flex items-center justify-center">
-            <User className="text-white w-6 h-6" />
+          <div className="bg-zinc-900 w-full h-full flex items-center justify-center group-hover:scale-110 transition-transform">
+            <User className="text-white w-5 h-5" />
           </div>
         </button>
-        <h1 className="text-xl font-black tracking-tighter uppercase">
+        <h1 className="text-lg font-bold tracking-tight text-zinc-800">
           {activeTab === 'messages' && 'MESSAGES'}
           {activeTab === 'contacts' && 'CONTACTS'}
           {activeTab === 'space' && 'SPACE'}
@@ -203,15 +203,15 @@ export default function App() {
                 <div 
                   key={i} 
                   onClick={() => setSelectedChat(`角色 ${i}`)}
-                  className="flex items-center gap-4 p-4 border-2 border-black bg-white hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-x-1 hover:-translate-y-1 transition-all cursor-pointer group active:translate-x-0 active:translate-y-0 active:shadow-none"
+                  className="flex items-center gap-4 p-4 bg-white hover:bg-gray-50 rounded-3xl transition-all cursor-pointer group active:scale-95"
                 >
-                  <div className="w-14 h-14 border-2 border-black bg-black flex items-center justify-center text-xl font-bold text-white">R{i}</div>
+                  <div className="w-14 h-14 rounded-2xl bg-zinc-900 flex items-center justify-center text-xl font-bold text-white shadow-xl shadow-zinc-200">R{i}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-1">
-                      <span className="font-black text-sm truncate uppercase tracking-tighter">示例角色 {i}</span>
-                      <span className="text-[10px] text-gray-400 font-mono">12:3{i}</span>
+                      <span className="font-bold text-zinc-900 truncate tracking-tight">示例角色 {i}</span>
+                      <span className="text-[10px] text-zinc-300 font-mono">12:3{i}</span>
                     </div>
-                    <p className="text-xs text-gray-500 truncate tracking-tight font-medium">你好！我们可以开始对话吗？这是一条模拟预览消息...</p>
+                    <p className="text-xs text-zinc-400 truncate tracking-tight">你好！我们可以开始对话吗？这是一条模拟预览消息...</p>
                   </div>
                 </div>
               ))}
@@ -228,19 +228,19 @@ export default function App() {
             >
               <div className="text-[10px] text-gray-400 mb-6 font-mono uppercase tracking-widest">Characters</div>
               <button 
-                className="w-full py-4 border-2 border-dashed border-black bg-white text-black font-bold flex items-center justify-center gap-2 hover:bg-black hover:text-white transition-all mb-4"
+                className="w-full py-4 border border-dashed border-zinc-200 bg-zinc-50 rounded-2xl text-zinc-500 font-bold flex items-center justify-center gap-2 hover:bg-white hover:border-zinc-900 hover:text-zinc-900 transition-all mb-4"
               >
                 <Plus size={20} />
                 <span>添加新角色</span>
               </button>
               <div className="space-y-4">
                 {['助手', '代码专家', '文学家'].map(name => (
-                  <div key={name} className="flex items-center justify-between p-4 border-2 border-black bg-white hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer">
+                  <div key={name} className="flex items-center justify-between p-4 bg-white border border-gray-50 rounded-2xl hover:shadow-lg hover:shadow-gray-100 transition-all cursor-pointer">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 border-2 border-black bg-black text-white flex items-center justify-center text-sm font-bold">{name[0]}</div>
-                      <span className="font-black uppercase tracking-tighter">{name}</span>
+                      <div className="w-10 h-10 rounded-xl bg-zinc-900 text-white flex items-center justify-center text-sm font-bold">{name[0]}</div>
+                      <span className="font-bold text-zinc-800">{name}</span>
                     </div>
-                    <ChevronRight size={18} className="text-black" />
+                    <ChevronRight size={18} className="text-zinc-300" />
                   </div>
                 ))}
               </div>
@@ -268,7 +268,7 @@ export default function App() {
       </main>
 
       {/* 底部导航栏 */}
-      <nav className="fixed bottom-0 left-0 right-0 h-20 bg-white border-t-2 border-black px-6 flex items-center justify-around pb-4 z-20">
+      <nav className="fixed bottom-0 left-0 right-0 h-20 bg-white/80 backdrop-blur-xl border-t border-gray-50 px-6 flex items-center justify-around pb-4 z-20">
         <NavButton active={activeTab === 'messages'} icon={MessageSquare} label="消息" onClick={() => setActiveTab('messages')} />
         <NavButton active={activeTab === 'contacts'} icon={Users} label="联系人" onClick={() => setActiveTab('contacts')} />
         <NavButton active={activeTab === 'space'} icon={Orbit} label="空间" onClick={() => setActiveTab('space')} />
@@ -285,31 +285,31 @@ export default function App() {
             className="fixed inset-0 bg-white z-[60] flex flex-col pt-12"
           >
             {/* 聊天顶部 */}
-            <div className="flex items-center justify-between px-6 py-4 border-b-2 border-black bg-white">
-              <button onClick={() => setSelectedChat(null)} className="p-2 border-2 border-black bg-white hover:bg-black hover:text-white transition-colors">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white/80 backdrop-blur-md">
+              <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400">
                 <ChevronRight size={24} className="rotate-180" />
               </button>
               <div className="flex flex-col items-center">
-                <span className="font-black uppercase tracking-tighter text-sm">{selectedChat}</span>
-                <span className="text-[10px] text-green-500 font-bold flex items-center gap-1">• ONLINE</span>
+                <span className="font-bold text-zinc-900 text-sm tracking-tight">{selectedChat}</span>
+                <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1">• 在线</span>
               </div>
-              <button className="p-2 border-2 border-black bg-white hover:bg-black hover:text-white transition-colors">
+              <button className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400">
                 <MoreVertical size={20} />
               </button>
             </div>
 
             {/* 消息区域 */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white">
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-zinc-50/50">
               {messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-full opacity-20 grayscale">
-                  <MessageSquare size={48} className="mb-2" />
-                  <p className="text-xs font-black uppercase">Start a new conversation</p>
+                <div className="flex flex-col items-center justify-center h-full text-zinc-300">
+                  <MessageSquare size={48} className="mb-2 opacity-20" />
+                  <p className="text-xs font-bold uppercase tracking-widest">Start conversation</p>
                 </div>
               )}
               
               {messages.map((msg, index) => (
                 <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-4 border-2 border-black ${msg.role === 'user' ? 'bg-black text-white' : 'bg-white text-black'} text-sm font-medium leading-relaxed shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
+                  <div className={`max-w-[85%] p-4 ${msg.role === 'user' ? 'bg-zinc-900 text-white rounded-3xl rounded-tr-sm' : 'bg-white text-zinc-800 border border-gray-100 rounded-3xl rounded-tl-sm'} text-sm font-medium leading-relaxed shadow-sm`}>
                     {msg.content}
                   </div>
                 </div>
@@ -317,32 +317,32 @@ export default function App() {
               
               {isTyping && (
                 <div className="flex justify-start">
-                  <div className="p-4 border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex gap-1">
-                    <span className="w-1 h-1 bg-black rounded-full animate-bounce"></span>
-                    <span className="w-1 h-1 bg-black rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                    <span className="w-1 h-1 bg-black rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                  <div className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm flex gap-1">
+                    <span className="w-1.5 h-1.5 bg-zinc-300 rounded-full animate-bounce"></span>
+                    <span className="w-1.5 h-1.5 bg-zinc-300 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                    <span className="w-1.5 h-1.5 bg-zinc-300 rounded-full animate-bounce [animation-delay:0.4s]"></span>
                   </div>
                 </div>
               )}
             </div>
 
             {/* 输入栏 */}
-            <div className="p-6 pb-12 flex items-center gap-3 bg-white border-t-2 border-black">
-              <div className="flex-1 border-2 border-black bg-white flex items-center px-4 py-1">
+            <div className="p-6 pb-12 flex items-center gap-3 bg-white">
+              <div className="flex-1 bg-zinc-50 border border-gray-100 rounded-2xl flex items-center px-4 py-1">
                 <input 
                   type="text" 
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                   placeholder={isTyping ? "正在思考..." : "发送消息..."} 
-                  className="bg-transparent border-none flex-1 py-3 text-sm focus:ring-0 font-medium" 
+                  className="bg-transparent border-none flex-1 py-3 text-sm focus:ring-0 font-medium text-zinc-900" 
                 />
-                <Plus size={18} className="text-black ml-2 cursor-pointer" />
+                <Plus size={18} className="text-zinc-300 ml-2 cursor-pointer" />
               </div>
               <button 
                 onClick={handleSendMessage}
                 disabled={isTyping}
-                className="w-12 h-12 bg-black border-2 border-black flex items-center justify-center text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50"
+                className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-95 transition-all disabled:opacity-50"
               >
                 <Send size={18} />
               </button>
@@ -363,28 +363,28 @@ export default function App() {
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed top-0 left-0 bottom-0 w-[85%] max-w-sm bg-white z-50 flex flex-col border-r-2 border-black shadow-2xl overflow-hidden"
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="fixed top-0 left-0 bottom-0 w-[85%] max-w-sm bg-white z-50 flex flex-col shadow-2xl rounded-r-[3rem] overflow-hidden"
             >
               {/* 侧边栏头部 - 个人资料区域 */}
-              <div className="p-8 pb-4 pt-16 border-b-2 border-black bg-gray-50">
+              <div className="p-10 pb-6 pt-20 bg-zinc-50/50">
                 <button 
                   onClick={() => setIsProfileEditing(!isProfileEditing)}
-                  className="w-20 h-20 border-2 border-black bg-black flex items-center justify-center mb-4 transition-all hover:rotate-6 hover:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.3)] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                  className="w-20 h-20 rounded-[2rem] bg-zinc-900 flex items-center justify-center mb-6 transition-all hover:scale-105 shadow-xl shadow-zinc-200"
                 >
                   <User size={40} className="text-white" />
                 </button>
-                <h2 className="text-2xl font-black uppercase tracking-tighter">User Name</h2>
-                <p className="text-gray-400 text-xs font-mono mt-1">SYSTEM_ID: 20260508</p>
+                <h2 className="text-2xl font-bold tracking-tight text-zinc-900">User Name</h2>
+                <p className="text-zinc-400 text-xs font-mono mt-1 uppercase tracking-widest">ID_2026.0508</p>
 
                 {isProfileEditing && (
                   <motion.div 
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
-                    className="mt-4 p-4 border-2 border-black bg-white space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                    className="mt-6 p-4 bg-white border border-gray-100 rounded-3xl space-y-3 shadow-lg shadow-gray-100"
                   >
-                    <input type="text" placeholder="修改昵称" className="w-full bg-gray-50 border-2 border-black p-2 text-sm focus:ring-0" />
-                    <button className="w-full bg-black text-white text-xs py-3 font-bold uppercase tracking-widest active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">保存修改</button>
+                    <input type="text" placeholder="修改昵称" className="w-full bg-zinc-50 border-none rounded-2xl p-3 text-sm focus:ring-1 focus:ring-zinc-200" />
+                    <button className="w-full bg-zinc-900 text-white text-xs py-4 rounded-2xl font-bold uppercase tracking-widest active:scale-95 transition-all">保存修改</button>
                   </motion.div>
                 )}
               </div>
@@ -552,15 +552,15 @@ function SidebarItem({ icon: Icon, label, onClick }: { icon: any, label: string,
   return (
     <button 
       onClick={onClick}
-      className="w-full flex items-center justify-between p-4 border-2 border-black bg-white hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-x-1 hover:-translate-y-1 transition-all group active:translate-x-0 active:translate-y-0 active:shadow-none mt-2"
+      className="w-full flex items-center justify-between p-4 bg-white border border-transparent hover:border-gray-50 hover:bg-gray-50/50 rounded-2xl transition-all group active:scale-95 mt-1"
     >
       <div className="flex items-center gap-4">
-        <div className="w-10 h-10 border-2 border-black bg-gray-50 flex items-center justify-center group-hover:bg-black group-hover:text-white transition-colors">
+        <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center group-hover:bg-zinc-900 group-hover:text-white transition-all">
           <Icon size={20} />
         </div>
-        <span className="font-black uppercase tracking-tighter text-sm">{label}</span>
+        <span className="font-bold text-sm text-zinc-700">{label}</span>
       </div>
-      <ChevronRight size={16} className="text-black" />
+      <ChevronRight size={16} className="text-zinc-300" />
     </button>
   );
 }

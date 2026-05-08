@@ -1,6 +1,6 @@
 {
   "name": "Minimalist Chat Framework",
-  "description": "一个外观简约、平面设计风格的聊天应用大框架，支持API接口接入、自定义CSS美化及待办日历。",
+  "description": "一个外观简约柔和、具有极简主义风格的聊天应用大框架，支持API接口接入、自定义CSS美化及待办日历。",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
