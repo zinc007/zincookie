@@ -38,6 +38,7 @@ type Tab = 'messages' | 'contacts' | 'space';
 
 interface Message {
   id: string;
+  charId: string; // 每条消息必须属于一个角色
   role: 'user' | 'assistant';
   content: string;
   time: string;
@@ -152,49 +153,64 @@ export default function App() {
   );
 
   // 核心数据状态 (带本地持久化)
-  const [characters, setCharacters] = useState<Character[]>(() => 
-    getSafeStorage('app_characters', [
+  const [characters, setCharacters] = useState<Character[]>(() => {
+    const data = getSafeStorage('app_characters', [
       { id: '1', name: '智能助手', avatar: '', notes: '默认系统助手', lastMessage: '你好！有什么可以帮你的吗？', time: '12:00' }
-    ])
-  );
+    ]);
+    const seen = new Set();
+    return data.filter((item: any) => item.id && !seen.has(item.id) && seen.add(item.id));
+  });
 
-  const [courses, setCourses] = useState<Course[]>(() => 
-    getSafeStorage('app_courses', [])
-  );
+  const [courses, setCourses] = useState<Course[]>(() => {
+    const data = getSafeStorage('app_courses', []);
+    const seen = new Set();
+    return data.filter((item: any) => item.id && !seen.has(item.id) && seen.add(item.id));
+  });
 
   const [chatSettings, setChatSettings] = useState<ChatSettings>(() => 
     getSafeStorage('chat_settings', {})
   );
 
-  const [posts, setPosts] = useState<{id: string, content: string, date: string, type: 'user' | 'ai'}[]>(() => 
-    getSafeStorage('app_posts', [
+  const [posts, setPosts] = useState<{id: string, content: string, date: string, type: 'user' | 'ai'}[]>(() => {
+    const data = getSafeStorage('app_posts', [
       { id: '1', content: '今天开启我的新计划。', date: '5月8日', type: 'user' }
-    ])
-  );
+    ]);
+    const seen = new Set();
+    return data.filter((item: any) => item.id && !seen.has(item.id) && seen.add(item.id));
+  });
 
-  const [todos, setTodos] = useState<TodoItem[]>(() => 
-    getSafeStorage('app_todos', [])
-  );
+  const [todos, setTodos] = useState<TodoItem[]>(() => {
+    const data = getSafeStorage('app_todos', []);
+    const seen = new Set();
+    return data.filter((item: any) => item.id && !seen.has(item.id) && seen.add(item.id));
+  });
 
-  const [stickers, setStickers] = useState<Sticker[]>(() => 
-    getSafeStorage('app_stickers', [
+  const [stickers, setStickers] = useState<Sticker[]>(() => {
+    const data = getSafeStorage('app_stickers', [
       { id: '1', name: '开心', url: 'https://cdn-icons-png.flaticon.com/512/2590/2590525.png' }
-    ])
-  );
+    ]);
+    const seen = new Set();
+    return data.filter((item: any) => item.id && !seen.has(item.id) && seen.add(item.id));
+  });
 
   const [apiSettings, setApiSettings] = useState<ApiSettings>(() => 
     getSafeStorage('api_settings', { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o' })
   );
 
-  const [apiPresets, setApiPresets] = useState<ApiPreset[]>(() => 
-    getSafeStorage('api_presets', [])
-  );
+  const [apiPresets, setApiPresets] = useState<ApiPreset[]>(() => {
+    const data = getSafeStorage('api_presets', []);
+    const seen = new Set();
+    return data.filter((item: any) => item.id && !seen.has(item.id) && seen.add(item.id));
+  });
   
   const [todoColors, setTodoColors] = useState<string[]>(() => 
     getSafeStorage('todo_colors', ['#18181b', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'])
   );
 
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [availableModels, setAvailableModels] = useState<string[]>(() => {
+    const data = getSafeStorage('app_available_models', []);
+    return Array.from(new Set(data.filter(i => !!i)));
+  });
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [customStyle, setCustomStyle] = useState(() => localStorage.getItem('custom_css') || '');
 
@@ -202,9 +218,14 @@ export default function App() {
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
 
   // 消息与美化增强状态
-  const [messages, setMessages] = useState<Message[]>(() => 
-    getSafeStorage('app_messages', [])
-  );
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const data = getSafeStorage('app_messages', []);
+    const seen = new Set();
+    // 过滤重复并确保数据完整性
+    return data.filter((item: any) => item.id && !seen.has(item.id) && seen.add(item.id));
+  });
+
+  const chatMessages = selectedChat ? messages.filter(m => m.charId === selectedChat.id) : [];
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
@@ -241,12 +262,13 @@ export default function App() {
       localStorage.setItem('app_messages', JSON.stringify(messages));
       localStorage.setItem('todo_colors', JSON.stringify(todoColors));
       localStorage.setItem('api_presets', JSON.stringify(apiPresets));
+      localStorage.setItem('app_available_models', JSON.stringify(availableModels));
     } catch (e) {
       if (e instanceof Error && e.name === 'QuotaExceededError') {
         console.warn('Storage quota exceeded, failed to save some data.');
       }
     }
-  }, [userProfile, apiSettings, characters, courses, posts, chatSettings, todos, stickers, customStyle, beautyPresets, messages]);
+  }, [userProfile, apiSettings, characters, courses, posts, chatSettings, todos, stickers, customStyle, beautyPresets, messages, availableModels, apiPresets]);
 
   const handleClearCache = async () => {
     if (!confirm('确定要清除所有本地数据吗？这将包括消息记录、角色设置和美容预设。')) return;
@@ -318,7 +340,8 @@ export default function App() {
       });
       const data = await resp.json();
       if (data.data) {
-        setAvailableModels(data.data.map((m: any) => m.id));
+        const uniqueModels = Array.from(new Set(data.data.map((m: any) => m.id).filter((id: any) => !!id))) as string[];
+        setAvailableModels(uniqueModels);
         alert('成功获取模型列表');
       }
     } catch (e) {
@@ -343,7 +366,7 @@ export default function App() {
   };
 
   const handleSendMessage = async (triggerAi: boolean = false) => {
-    if (!inputMessage.trim() || isTyping) return;
+    if (!inputMessage.trim() || !selectedChat || isTyping) return;
     const content = inputMessage;
     const msgType = isVoiceMode ? 'voice' : 'text';
     
@@ -358,14 +381,17 @@ export default function App() {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const newUserMsg: Message = { 
       id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, 
+      charId: selectedChat.id,
       role: 'user', 
       content: quotedMessage ? `> ${quotedMessage.content}\n\n${content}` : content, 
       time,
       type: msgType
     };
     
-    const updatedMessages = [...messages, newUserMsg];
+    // 立即更新当前视图的消息
     setMessages(prev => [...prev, newUserMsg]);
+    const currentChatHistory = [...chatMessages, newUserMsg];
+
     setInputMessage('');
     setQuotedMessage(null);
     setIsVoiceMode(false);
@@ -380,7 +406,10 @@ export default function App() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiSettings.apiKey}` },
         body: JSON.stringify({ 
           model: apiSettings.model, 
-          messages: updatedMessages.map(m => ({ role: m.role, content: m.content })), 
+          messages: [
+            { role: 'system', content: `你是 ${selectedChat.name}。${selectedChat.notes || ''}` },
+            ...currentChatHistory.slice(-10).map(m => ({ role: m.role, content: m.content }))
+          ], 
           temperature: 0.7 
         })
       });
@@ -388,6 +417,7 @@ export default function App() {
       if (data.choices?.[0]?.message?.content) {
         setMessages(prev => [...prev, { 
           id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, 
+          charId: selectedChat.id,
           role: 'assistant', 
           content: data.choices[0].message.content,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -396,6 +426,7 @@ export default function App() {
     } catch (e) {
       setMessages(prev => [...prev, { 
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, 
+        charId: selectedChat.id,
         role: 'assistant', 
         content: '连接接口失败，请检查配置。',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -665,14 +696,14 @@ export default function App() {
               {chatSettings[selectedChat.id]?.customCss && (
                 <style>{chatSettings[selectedChat.id]?.customCss}</style>
               )}
-              {messages.length === 0 && (
+              {chatMessages.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-full text-zinc-300">
                   <MessageSquare size={48} className="mb-2 opacity-20" />
                   <p className="text-xs font-bold uppercase tracking-widest">Initialization Ready</p>
                 </div>
               )}
               
-              {messages.map((msg, index) => {
+              {chatMessages.map((msg, index) => {
                 const settings = chatSettings[selectedChat.id] || {};
                 const bubbleStyle = {
                   fontSize: settings.fontSize ? `${settings.fontSize}px` : undefined,
@@ -843,7 +874,7 @@ export default function App() {
                     type="text" 
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(false)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(true)}
                     placeholder={isVoiceMode ? "按下发送将转为语音..." : (isTyping ? "正在思考..." : "发送消息...")} 
                     className={`bg-transparent border-none flex-1 py-2 text-sm focus:ring-0 font-medium ${isVoiceMode ? 'text-white placeholder:text-zinc-500' : 'text-zinc-900'}`} 
                   />
@@ -879,9 +910,11 @@ export default function App() {
           isOpen={isTransferModalOpen}
           onClose={() => setIsTransferModalOpen(false)}
           onConfirm={(amount: string, remark: string) => {
+            if (!selectedChat) return;
             const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const transferMsg: Message = {
               id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+              charId: selectedChat.id,
               role: 'user',
               content: `转账: ${amount}`,
               time,
@@ -1030,7 +1063,7 @@ export default function App() {
                                 onClick={() => {
                                   const el = document.getElementById('api-preset-name') as HTMLInputElement;
                                   const name = el.value || '未命名配置';
-                                  setApiPresets(prev => [...prev, { id: Date.now().toString(), name, config: { ...apiSettings } }]);
+                                  setApiPresets(prev => [...prev, { id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, name, config: { ...apiSettings } }]);
                                   el.value = '';
                                   alert('配置已保存');
                                 }}
@@ -1074,24 +1107,38 @@ export default function App() {
                               onChange={e => setApiSettings({...apiSettings, apiKey: e.target.value})}
                             />
                           </label>
-                          <div className="flex gap-2">
-                            <div className="flex-1">
-                              <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">模型部署</span>
-                              <select 
-                                className="w-full bg-zinc-50 border-none rounded-xl p-4 text-xs mt-1 appearance-none"
-                                value={apiSettings.model}
-                                onChange={e => setApiSettings({...apiSettings, model: e.target.value})}
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">模型部署 (Model Select)</span>
+                            <div className="flex gap-2">
+                              <div className="flex-1">
+                                <select 
+                                  className="w-full bg-zinc-50 border-none rounded-xl p-4 text-xs appearance-none"
+                                  value={apiSettings.model}
+                                  onChange={e => setApiSettings({...apiSettings, model: e.target.value})}
+                                >
+                                  <option value="gpt-4o">gpt-4o</option>
+                                  {availableModels.map(m => <option key={m} value={m}>{m}</option>)}
+                                </select>
+                              </div>
+                              <button 
+                                onClick={handleFetchModels}
+                                disabled={isFetchingModels}
+                                className="bg-zinc-900 text-white p-4 rounded-xl active:scale-90 transition-all flex items-center justify-center shrink-0"
                               >
-                                <option value="gpt-4o">gpt-4o</option>
-                                {availableModels.map(m => <option key={m} value={m}>{m}</option>)}
-                              </select>
+                                <Orbit size={18} className={isFetchingModels ? 'animate-spin' : ''} />
+                              </button>
                             </div>
                             <button 
-                              onClick={handleFetchModels}
-                              disabled={isFetchingModels}
-                              className="mt-5 bg-zinc-900 text-white p-4 rounded-xl active:scale-90 transition-all flex items-center justify-center shrink-0"
+                              onClick={() => {
+                                const name = prompt('为当前选中的模型和地址保存一个新的配置名称:', `配置-${apiSettings.model}`);
+                                if (name) {
+                                  setApiPresets(prev => [...prev, { id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, name, config: { ...apiSettings } }]);
+                                  alert(`已保存配置: ${name}`);
+                                }
+                              }}
+                              className="w-full mt-2 py-3 bg-zinc-50 text-zinc-400 rounded-xl text-[9px] font-bold uppercase tracking-widest hover:text-zinc-900 transition-all active:scale-95 border border-dashed border-zinc-200"
                             >
-                              <Orbit size={18} className={isFetchingModels ? 'animate-spin' : ''} />
+                              + 保存为新预设 (Save as Preset)
                             </button>
                           </div>
                         </div>

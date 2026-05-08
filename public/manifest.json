@@ -1,11 +1,12 @@
 {
   "name": "cookie",
   "short_name": "cookie",
-  "start_url": "/?pwa=true",
+  "description": "Cookie - Your Minimalist Space",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
-  "description": "Cookie - Your Minimalist Space",
   "icons": [
     {
       "src": "/icon.svg",
