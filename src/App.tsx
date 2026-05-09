@@ -36,6 +36,7 @@ import {
   Camera,
   Quote,
   ArrowLeft,
+  ArrowRight,
   Edit3,
   Edit
 } from 'lucide-react';
@@ -168,7 +169,10 @@ const PERIOD_TIMES = ['08:00', '09:50', '13:30', '15:20', '18:00', '19:50', '21:
 // --- 主要组件 ---
 export default function App() {
   // 基础状态
-  const [activeTab, setActiveTab] = useState<Tab>('messages');
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const saved = localStorage.getItem('last_active_tab');
+    return (saved as Tab) || 'messages';
+  });
   const [selectedChat, setSelectedChat] = useState<Character | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileEditing, setIsProfileEditing] = useState(false);
@@ -274,8 +278,70 @@ export default function App() {
   const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
   const [isForwardModalOpen, setIsForwardModalOpen] = useState(false);
   const [postToForward, setPostToForward] = useState<Post | null>(null);
-  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(() => localStorage.getItem('selected_post_id'));
+  const [postDetailReturnChatId, setPostDetailReturnChatId] = useState<string | null>(null);
   const [postActionTarget, setPostActionTarget] = useState<{ type: 'post' | 'comment', id: string, parentId?: string, content: string } | null>(null);
+
+  // --- 返回键/手势接管逻辑 ---
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      // 优先级：弹窗 > 详情页 > 聊天窗口 > 侧边栏
+      if (isCreatePostModalOpen) {
+        setIsCreatePostModalOpen(false);
+        return;
+      }
+      if (isForwardModalOpen) {
+        setIsForwardModalOpen(false);
+        return;
+      }
+      if (postActionTarget) {
+        setPostActionTarget(null);
+        return;
+      }
+      if (selectedPostId) {
+        if (postDetailReturnChatId) {
+          setActiveTab('messages');
+          const char = characters.find(c => c.id === postDetailReturnChatId);
+          if (char) setSelectedChat(char);
+          setPostDetailReturnChatId(null);
+        }
+        setSelectedPostId(null);
+        localStorage.removeItem('selected_post_id');
+        return;
+      }
+      if (selectedChat) {
+        setSelectedChat(null);
+        return;
+      }
+      if (isSidebarOpen) {
+        setIsSidebarOpen(false);
+        return;
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [
+    isCreatePostModalOpen, 
+    isForwardModalOpen, 
+    postActionTarget, 
+    selectedPostId, 
+    selectedChat, 
+    isSidebarOpen, 
+    postDetailReturnChatId, 
+    characters
+  ]);
+
+  // 当进入「深层」UI 时，向历史记录推送一个状态
+  useEffect(() => {
+    const hasActiveLayer = isCreatePostModalOpen || isForwardModalOpen || postActionTarget || selectedPostId || selectedChat || isSidebarOpen;
+    if (hasActiveLayer) {
+      // 防止重复推送
+      if (window.history.state !== 'active-layer') {
+        window.history.pushState('active-layer', '');
+      }
+    }
+  }, [isCreatePostModalOpen, isForwardModalOpen, postActionTarget, selectedPostId, selectedChat, isSidebarOpen]);
 
   // 消息与美化增强状态
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -323,12 +389,15 @@ export default function App() {
       localStorage.setItem('todo_colors', JSON.stringify(todoColors));
       localStorage.setItem('api_presets', JSON.stringify(apiPresets));
       localStorage.setItem('app_available_models', JSON.stringify(availableModels));
+      localStorage.setItem('last_active_tab', activeTab);
+      if (selectedPostId) localStorage.setItem('selected_post_id', selectedPostId);
+      else localStorage.removeItem('selected_post_id');
     } catch (e) {
       if (e instanceof Error && e.name === 'QuotaExceededError') {
         console.warn('Storage quota exceeded, failed to save some data.');
       }
     }
-  }, [userProfile, apiSettings, characters, courses, posts, chatSettings, todos, stickers, customStyle, beautyPresets, messages, availableModels, apiPresets]);
+  }, [userProfile, apiSettings, characters, courses, posts, chatSettings, todos, stickers, customStyle, beautyPresets, messages, availableModels, apiPresets, activeTab, selectedPostId]);
 
   const handleClearCache = async () => {
     if (!confirm('确定要清除所有本地数据吗？这将包括消息记录、角色设置和美容预设。')) return;
@@ -635,8 +704,20 @@ export default function App() {
                       {/* 背景切换 */}
                       <button 
                         onClick={() => {
-                          const url = prompt('背景图片 URL:', userProfile.background);
-                          if (url !== null) setUserProfile({ ...userProfile, background: url });
+                          const input = document.createElement('input');
+                          input.type = 'file';
+                          input.accept = 'image/*';
+                          input.onchange = (e: any) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (ev) => {
+                                setUserProfile({ ...userProfile, background: ev.target?.result as string });
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          };
+                          input.click();
                         }}
                         className="absolute top-4 left-4 p-2 bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-full text-white transition-all opacity-0 group-hover:opacity-100"
                       >
@@ -658,7 +739,7 @@ export default function App() {
                             const url = prompt('头像 URL:', userProfile.avatar);
                             if (url !== null) setUserProfile({ ...userProfile, avatar: url });
                           }}
-                          className="w-24 h-24 rounded-[1.8rem] border-[6px] border-white bg-zinc-900 shadow-2xl overflow-hidden cursor-pointer active:scale-95 transition-all"
+                          className="w-24 h-24 rounded-[1.8rem] border-[6px] border-white bg-zinc-900 overflow-hidden cursor-pointer active:scale-95 transition-all"
                         >
                           {userProfile.avatar ? (
                             <img src={userProfile.avatar} className="w-full h-full object-cover" />
@@ -671,9 +752,24 @@ export default function App() {
 
                     {/* 用户资料 (头像下方, 右对齐) */}
                     <div className="px-8 pt-10 pb-4 text-right flex flex-col items-end">
-                      <span className="text-xl font-black text-zinc-900 leading-none">{userProfile.name}</span>
-                      <span className="text-[11px] font-black text-zinc-400 mt-1 uppercase tracking-tight">{userProfile.username}</span>
-                      <p className="text-[10px] text-zinc-300 mt-2 italic max-w-[70%]">{userProfile.signature}</p>
+                      <span 
+                        onClick={() => {
+                          const newName = prompt('修改网名:', userProfile.name);
+                          if (newName !== null) setUserProfile({ ...userProfile, name: newName });
+                        }}
+                        className="text-xl font-bold text-zinc-900 leading-none cursor-pointer hover:opacity-70 transition-opacity"
+                      >
+                        {userProfile.name}
+                      </span>
+                      <p 
+                        onClick={() => {
+                          const newSig = prompt('修改个性签名:', userProfile.signature);
+                          if (newSig !== null) setUserProfile({ ...userProfile, signature: newSig });
+                        }}
+                        className="text-[10px] text-zinc-400 mt-2 italic max-w-[70%] cursor-pointer hover:opacity-70 transition-opacity"
+                      >
+                        {userProfile.signature}
+                      </p>
                     </div>
 
                     {/* 帖子列表 */}
@@ -707,27 +803,55 @@ export default function App() {
                     </div>
                   </motion.div>
                 ) : (
-                  <PostDetailView 
-                    post={posts.find(p => p.id === selectedPostId)}
-                    onBack={() => setSelectedPostId(null)}
-                    userProfile={userProfile}
-                    characters={characters}
-                    onLikePost={() => {
-                      setPosts(prev => prev.map(p => p.id === selectedPostId ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p));
-                    }}
-                    onAddComment={(content, replyTo) => {
-                      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                      const newComment = { id: Date.now().toString(), username: userProfile.name, content, likes: 0, replyTo, time };
-                      setPosts(prev => prev.map(p => p.id === selectedPostId ? { ...p, comments: [...p.comments, newComment] } : p));
-                    }}
-                    onLikeComment={(commentId) => {
-                      setPosts(prev => prev.map(p => p.id === selectedPostId ? {
-                        ...p,
-                        comments: p.comments.map(c => c.id === commentId ? { ...c, isLiked: !c.isLiked, likes: c.isLiked ? c.likes - 1 : c.likes + 1 } : c)
-                      } : p));
-                    }}
-                    onCommentLongPress={(id, content) => setPostActionTarget({ type: 'comment', id, parentId: selectedPostId!, content })}
-                  />
+                  <motion.div
+                    key="detail"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    className="h-full"
+                  >
+                    <PostDetailView 
+                      post={posts.find(p => p.id === selectedPostId) || messages.find(m => m.postForward?.id === selectedPostId)?.postForward}
+                      onBack={() => {
+                        if (postDetailReturnChatId) {
+                          setActiveTab('messages');
+                          const char = characters.find(c => c.id === postDetailReturnChatId);
+                          if (char) setSelectedChat(char);
+                          setPostDetailReturnChatId(null);
+                        }
+                        setSelectedPostId(null);
+                        localStorage.removeItem('selected_post_id');
+                      }}
+                      userProfile={userProfile}
+                      characters={characters}
+                      onLikePost={() => {
+                        setPosts(prev => prev.map(p => p.id === selectedPostId ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p));
+                      }}
+                      onAddComment={(content, replyTo) => {
+                        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        const newComment = { id: Date.now().toString(), username: userProfile.name, content, likes: 0, replyTo, time };
+                        setPosts(prev => {
+                          const exists = prev.some(p => p.id === selectedPostId);
+                          if (!exists) {
+                            // 如果帖子不在列表中(例如来自转发), 先把它加进去
+                            const forwardPost = messages.find(m => m.postForward?.id === selectedPostId)?.postForward;
+                            if (forwardPost) {
+                              return [{ ...forwardPost, comments: [newComment] }, ...prev];
+                            }
+                            return prev;
+                          }
+                          return prev.map(p => p.id === selectedPostId ? { ...p, comments: [...(p.comments || []), newComment] } : p);
+                        });
+                      }}
+                      onLikeComment={(commentId) => {
+                        setPosts(prev => prev.map(p => p.id === selectedPostId ? {
+                          ...p,
+                          comments: (p.comments || []).map(c => c.id === commentId ? { ...c, isLiked: !c.isLiked, likes: c.isLiked ? c.likes - 1 : c.likes + 1 } : c)
+                        } : p));
+                      }}
+                      onCommentLongPress={(id, content) => setPostActionTarget({ type: 'comment', id, parentId: selectedPostId!, content })}
+                    />
+                  </motion.div>
                 )}
               </AnimatePresence>
             </motion.div>
@@ -919,11 +1043,43 @@ export default function App() {
                       />
                     ) : (
                       <div 
-                        className={`relative p-4 ${msg.role === 'user' ? (settings.userBubbleColor ? '' : 'bg-zinc-900 text-white') : (settings.charBubbleColor ? '' : 'bg-white text-zinc-800 border border-gray-100 shadow-xl shadow-zinc-100/50')} rounded-3xl ${msg.role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} font-medium leading-relaxed ${glassClass}`}
-                        style={bubbleStyle}
+                        className={msg.postForward ? "w-full" : `relative p-4 ${msg.role === 'user' ? (settings.userBubbleColor ? '' : 'bg-zinc-900 text-white') : (settings.charBubbleColor ? '' : 'bg-white text-zinc-800 border border-gray-100 shadow-xl shadow-zinc-100/50')} rounded-3xl ${msg.role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} font-medium leading-relaxed ${glassClass} overflow-hidden`}
+                        style={msg.postForward ? {} : bubbleStyle}
                       >
-                        {msg.content}
-                        {msg.isEdited && <span className="absolute -bottom-4 right-2 text-[8px] text-zinc-400 opacity-50 italic">已编辑</span>}
+                        {msg.postForward ? (
+                          <div 
+                            onClick={() => {
+                              setPostDetailReturnChatId(selectedChat.id);
+                              setSelectedChat(null);
+                              setActiveTab('space');
+                              setSelectedPostId(msg.postForward.id);
+                            }}
+                            className="w-[60%] aspect-[4/2] bg-white border border-zinc-100 rounded-2xl p-3 flex flex-col justify-between cursor-pointer hover:bg-zinc-50 transition-colors shadow-sm ml-auto"
+                          >
+                            <div className="flex items-center gap-2 border-b border-zinc-50 pb-2">
+                              <div className="w-4 h-4 rounded bg-zinc-900 flex items-center justify-center text-[7px] font-black text-white shrink-0">
+                                {msg.postForward.type === 'ai' ? 'AI' : (userProfile.avatar ? <img src={userProfile.avatar} className="w-full h-full object-cover rounded" /> : 'M')}
+                              </div>
+                              <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter truncate">
+                                {msg.postForward.type === 'ai' ? (characters[0]?.name || '助手') : userProfile.name}
+                              </span>
+                            </div>
+                            
+                            <div className="flex-1 py-1 overflow-hidden">
+                              <p className="text-[10px] text-zinc-500 leading-tight line-clamp-2 italic">
+                                {msg.postForward.content}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center justify-between mt-1 pt-1 border-t border-zinc-50/50">
+                              <span className="text-[7px] text-zinc-300 font-black uppercase tracking-widest">Discovery</span>
+                              <ArrowRight size={8} className="text-zinc-300" />
+                            </div>
+                          </div>
+                        ) : (
+                          msg.content
+                        )}
+                        {msg.isEdited && !msg.postForward && <span className="absolute -bottom-4 right-2 text-[8px] text-zinc-400 opacity-50 italic">已编辑</span>}
                       </div>
                     )}
 
@@ -1940,7 +2096,7 @@ function PostCard({ post, userProfile, characters, onLike, onComment, onForward,
       onMouseUp={handleTouchEnd}
     >
       <div className="flex items-start gap-4">
-        <div className={`w-12 h-12 rounded-2xl ${post.type === 'ai' ? 'bg-indigo-500' : 'bg-zinc-900'} flex-shrink-0 flex items-center justify-center text-white text-xs font-bold overflow-hidden shadow-lg shadow-zinc-100`}>
+        <div className={`w-12 h-12 rounded-2xl ${post.type === 'ai' ? 'bg-indigo-500' : 'bg-zinc-900'} flex-shrink-0 flex items-center justify-center text-white text-xs font-bold overflow-hidden`}>
           {post.type === 'ai' ? (
             (characters[0]?.avatar ? <img src={characters[0].avatar} className="w-full h-full object-cover" /> : 'AI')
           ) : (
@@ -1952,7 +2108,7 @@ function PostCard({ post, userProfile, characters, onLike, onComment, onForward,
             <span className="text-sm font-black text-zinc-900">
               {post.type === 'ai' ? (characters[0]?.name || '智能助手') : userProfile.name}
             </span>
-            <span className="text-[10px] text-zinc-300 font-mono italic">{post.date}</span>
+            <span className="text-[10px] text-zinc-500 font-mono italic">{post.date}</span>
           </div>
           
           <div onClick={onClick}>
@@ -2035,11 +2191,11 @@ function PostDetailView({ post, onBack, userProfile, characters, onLikePost, onA
         />
 
         <div className="mt-4 pb-4 border-b border-zinc-50">
-          <span className="text-[10px] font-black uppercase text-zinc-300 tracking-widest">Comments ({post.comments.length})</span>
+          <span className="text-[10px] font-black uppercase text-zinc-300 tracking-widest">Comments ({(post.comments || []).length})</span>
         </div>
 
         <div className="space-y-6 mt-6">
-          {post.comments.map((comment: any) => (
+          {(post.comments || []).map((comment: any) => (
             <div 
               key={comment.id} 
               className="flex gap-3 animate-in fade-in"
