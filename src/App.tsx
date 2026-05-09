@@ -38,7 +38,10 @@ import {
   ArrowLeft,
   ArrowRight,
   Edit3,
-  Edit
+  Edit,
+  ChevronDown,
+  Zap,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -368,6 +371,9 @@ export default function App() {
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const [isStickerPickerOpen, setIsStickerPickerOpen] = useState(false);
+  const [isPopupEnabled, setIsPopupEnabled] = useState(() => localStorage.getItem('popup_enabled') === 'true');
 
   // 课表/日历辅助逻辑
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -390,6 +396,7 @@ export default function App() {
       localStorage.setItem('api_presets', JSON.stringify(apiPresets));
       localStorage.setItem('app_available_models', JSON.stringify(availableModels));
       localStorage.setItem('last_active_tab', activeTab);
+      localStorage.setItem('popup_enabled', isPopupEnabled ? 'true' : 'false');
       if (selectedPostId) localStorage.setItem('selected_post_id', selectedPostId);
       else localStorage.removeItem('selected_post_id');
     } catch (e) {
@@ -487,7 +494,7 @@ export default function App() {
     const newStickers = lines.map(line => {
       const parts = line.split(':');
       if (parts.length >= 2) {
-        return { id: Math.random().toString(), name: parts[0].trim(), url: parts.slice(1).join(':').trim() };
+        return { id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, name: parts[0].trim(), url: parts.slice(1).join(':').trim() };
       }
       return null;
     }).filter(s => s !== null) as Sticker[];
@@ -618,24 +625,34 @@ export default function App() {
                     const timer = setTimeout(() => {
                       if (confirm(`确定要移除与 ${char.name} 的对话记录吗？`)) {
                         setCharacters(prev => prev.filter(c => c.id !== char.id));
-                        // 同时清除该角色的消息 (可选，根据用户习惯)
-                        // setMessages(messages.filter(m => !isRelatedToChar(m, char.id))); 
                       }
                     }, 800);
                     e.currentTarget.addEventListener('pointerup', () => clearTimeout(timer), { once: true });
                     e.currentTarget.addEventListener('pointermove', () => clearTimeout(timer), { once: true });
                   }}
-                  className="flex items-center gap-4 p-4 hover:bg-zinc-50 rounded-[2rem] transition-all cursor-pointer group active:scale-95 touch-none"
+                  className="flex items-center gap-3 pl-2 pr-4 py-4 hover:bg-zinc-50 rounded-[2rem] transition-all cursor-pointer group active:scale-95 touch-none"
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-zinc-900 flex items-center justify-center text-white text-xl font-bold overflow-hidden shadow-lg shadow-zinc-100">
+                  <div className="w-10 h-10 rounded-2xl bg-zinc-900 flex items-center justify-center text-white text-lg font-bold overflow-hidden shadow-lg shadow-zinc-100">
                     {char.avatar ? <img src={char.avatar} className="w-full h-full object-cover" /> : char.name[0]}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-1">
                       <span className="font-bold text-zinc-800 truncate">{chatSettings[char.id]?.nickname || char.name}</span>
-                      <span className="text-[10px] text-zinc-300 font-mono">{char.time || '12:00'}</span>
+                      <span className="text-[10px] text-zinc-500 font-mono font-bold">
+                        {messages.filter(m => m.charId === char.id).slice(-1)[0]?.time || '12:00'}
+                      </span>
                     </div>
-                    <p className="text-xs text-zinc-400 truncate">{char.lastMessage || '待发起的对话...'}</p>
+                    <p className="text-xs text-zinc-400 truncate opacity-80">
+                      {(() => {
+                        const charMsgs = messages.filter(m => m.charId === char.id);
+                        if (charMsgs.length === 0) return '待发起的对话...';
+                        const lastMsg = charMsgs[charMsgs.length - 1];
+                        if (lastMsg.type === 'voice') return '[语音消息]';
+                        if (lastMsg.type === 'transfer') return '[转账消息]';
+                        if (lastMsg.postForward) return '[转发帖子]';
+                        return lastMsg.content;
+                      })()}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -682,178 +699,168 @@ export default function App() {
               exit={{ opacity: 0 }}
               className="flex flex-col pb-20 overflow-y-auto h-full bg-white"
             >
-              <AnimatePresence mode="wait">
-                {!selectedPostId ? (
-                  <motion.div 
-                    key="list"
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                  >
-                    {/* 背景区域 */}
-                    <div className="relative h-[33vh] w-full bg-zinc-100 group">
-                      {userProfile.background ? (
-                        <img src={userProfile.background} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-zinc-300 bg-zinc-50 font-black uppercase tracking-widest text-4xl opacity-10">
-                          Cookie Space
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60" />
-                      
-                      {/* 背景切换 */}
-                      <button 
-                        onClick={() => {
-                          const input = document.createElement('input');
-                          input.type = 'file';
-                          input.accept = 'image/*';
-                          input.onchange = (e: any) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onload = (ev) => {
-                                setUserProfile({ ...userProfile, background: ev.target?.result as string });
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          };
-                          input.click();
-                        }}
-                        className="absolute top-4 left-4 p-2 bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-full text-white transition-all opacity-0 group-hover:opacity-100"
-                      >
-                        <Camera size={16} />
-                      </button>
-
-                      {/* 发布按钮 */}
-                      <button 
-                        onClick={() => setIsCreatePostModalOpen(true)}
-                        className="absolute top-4 right-4 w-10 h-10 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-xl"
-                      >
-                        <Plus size={24} />
-                      </button>
-
-                      {/* 用户头像 (外挑完整显示) */}
-                      <div className="absolute -bottom-8 right-8 z-10">
-                        <div 
-                          onClick={() => {
-                            const url = prompt('头像 URL:', userProfile.avatar);
-                            if (url !== null) setUserProfile({ ...userProfile, avatar: url });
-                          }}
-                          className="w-24 h-24 rounded-[1.8rem] border-[6px] border-white bg-zinc-900 overflow-hidden cursor-pointer active:scale-95 transition-all"
-                        >
-                          {userProfile.avatar ? (
-                            <img src={userProfile.avatar} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center"><User className="text-white" size={40} /></div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 用户资料 (头像下方, 右对齐) */}
-                    <div className="px-8 pt-10 pb-4 text-right flex flex-col items-end">
-                      <span 
-                        onClick={() => {
-                          const newName = prompt('修改网名:', userProfile.name);
-                          if (newName !== null) setUserProfile({ ...userProfile, name: newName });
-                        }}
-                        className="text-xl font-bold text-zinc-900 leading-none cursor-pointer hover:opacity-70 transition-opacity"
-                      >
-                        {userProfile.name}
-                      </span>
-                      <p 
-                        onClick={() => {
-                          const newSig = prompt('修改个性签名:', userProfile.signature);
-                          if (newSig !== null) setUserProfile({ ...userProfile, signature: newSig });
-                        }}
-                        className="text-[10px] text-zinc-400 mt-2 italic max-w-[70%] cursor-pointer hover:opacity-70 transition-opacity"
-                      >
-                        {userProfile.signature}
-                      </p>
-                    </div>
-
-                    {/* 帖子列表 */}
-                    <div className="mt-4 px-6 divide-y divide-zinc-100">
-                      {posts.map(post => (
-                        <PostCard 
-                          key={post.id} 
-                          post={post} 
-                          userProfile={userProfile} 
-                          characters={characters}
-                          onLike={() => {
-                            setPosts(prev => prev.map(p => p.id === post.id ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p));
-                          }}
-                          onComment={(content) => {
-                            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                            const newComment = { id: Date.now().toString(), username: userProfile.name, content, likes: 0, time };
-                            setPosts(prev => prev.map(p => p.id === post.id ? { ...p, comments: [...p.comments, newComment] } : p));
-                          }}
-                          onForward={() => {
-                            setPostToForward(post);
-                            setIsForwardModalOpen(true);
-                          }}
-                          onClick={() => setSelectedPostId(post.id)}
-                          onLongPress={() => setPostActionTarget({ type: 'post', id: post.id, content: post.content })}
-                        />
-                      ))}
-                    </div>
-
-                    <div className="p-10 text-center opacity-20 filter grayscale">
-                      <p className="text-[9px] font-black uppercase tracking-[0.5em]">--- End of Space ---</p>
-                    </div>
-                  </motion.div>
+              {/* 背景区域 */}
+              <div className="relative h-[33vh] w-full bg-zinc-100 group">
+                {userProfile.background ? (
+                  <img src={userProfile.background} className="w-full h-full object-cover" />
                 ) : (
-                  <motion.div
-                    key="detail"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    className="h-full"
-                  >
-                    <PostDetailView 
-                      post={posts.find(p => p.id === selectedPostId) || messages.find(m => m.postForward?.id === selectedPostId)?.postForward}
-                      onBack={() => {
-                        if (postDetailReturnChatId) {
-                          setActiveTab('messages');
-                          const char = characters.find(c => c.id === postDetailReturnChatId);
-                          if (char) setSelectedChat(char);
-                          setPostDetailReturnChatId(null);
-                        }
-                        setSelectedPostId(null);
-                        localStorage.removeItem('selected_post_id');
-                      }}
-                      userProfile={userProfile}
-                      characters={characters}
-                      onLikePost={() => {
-                        setPosts(prev => prev.map(p => p.id === selectedPostId ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p));
-                      }}
-                      onAddComment={(content, replyTo) => {
-                        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                        const newComment = { id: Date.now().toString(), username: userProfile.name, content, likes: 0, replyTo, time };
-                        setPosts(prev => {
-                          const exists = prev.some(p => p.id === selectedPostId);
-                          if (!exists) {
-                            // 如果帖子不在列表中(例如来自转发), 先把它加进去
-                            const forwardPost = messages.find(m => m.postForward?.id === selectedPostId)?.postForward;
-                            if (forwardPost) {
-                              return [{ ...forwardPost, comments: [newComment] }, ...prev];
-                            }
-                            return prev;
-                          }
-                          return prev.map(p => p.id === selectedPostId ? { ...p, comments: [...(p.comments || []), newComment] } : p);
-                        });
-                      }}
-                      onLikeComment={(commentId) => {
-                        setPosts(prev => prev.map(p => p.id === selectedPostId ? {
-                          ...p,
-                          comments: (p.comments || []).map(c => c.id === commentId ? { ...c, isLiked: !c.isLiked, likes: c.isLiked ? c.likes - 1 : c.likes + 1 } : c)
-                        } : p));
-                      }}
-                      onCommentLongPress={(id, content) => setPostActionTarget({ type: 'comment', id, parentId: selectedPostId!, content })}
-                    />
-                  </motion.div>
+                  <div className="w-full h-full flex items-center justify-center text-zinc-300 bg-zinc-50 font-black uppercase tracking-widest text-4xl opacity-10">
+                    Cookie Space
+                  </div>
                 )}
-              </AnimatePresence>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-zinc-900/10 opacity-60" />
+                
+                {/* 背景切换 */}
+                <button 
+                  onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/*';
+                    input.onchange = (e: any) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          setUserProfile({ ...userProfile, background: ev.target?.result as string });
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    };
+                    input.click();
+                  }}
+                  className="absolute top-4 left-4 p-2 bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-full text-white transition-all opacity-0 group-hover:opacity-100"
+                >
+                  <Camera size={16} />
+                </button>
+
+                {/* 发布按钮 */}
+                <button 
+                  onClick={() => setIsCreatePostModalOpen(true)}
+                  className="absolute top-4 right-4 w-10 h-10 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-xl"
+                >
+                  <Plus size={24} />
+                </button>
+
+                {/* 用户头像 */}
+                <div className="absolute -bottom-8 right-8 z-10">
+                  <div 
+                    onClick={() => {
+                      const url = prompt('头像 URL:', userProfile.avatar);
+                      if (url !== null) setUserProfile({ ...userProfile, avatar: url });
+                    }}
+                    className="w-24 h-24 rounded-[1.8rem] border-[6px] border-white bg-zinc-900 overflow-hidden cursor-pointer active:scale-95 transition-all shadow-xl shadow-zinc-200/50"
+                  >
+                    {userProfile.avatar ? (
+                      <img src={userProfile.avatar} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center"><User className="text-white" size={40} /></div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 用户资料 (头像下方, 右对齐) */}
+              <div className="px-8 pt-10 pb-4 text-right flex flex-col items-end">
+                <span 
+                  onClick={() => {
+                    const newName = prompt('修改网名:', userProfile.name);
+                    if (newName !== null) setUserProfile({ ...userProfile, name: newName });
+                  }}
+                  className="text-xl font-bold text-zinc-900 leading-none cursor-pointer hover:opacity-70 transition-opacity"
+                >
+                  {userProfile.name}
+                </span>
+                <p 
+                  onClick={() => {
+                    const newSig = prompt('修改个性签名:', userProfile.signature);
+                    if (newSig !== null) setUserProfile({ ...userProfile, signature: newSig });
+                  }}
+                  className="text-[10px] text-zinc-400 mt-2 italic max-w-[70%] cursor-pointer hover:opacity-70 transition-opacity"
+                >
+                  {userProfile.signature}
+                </p>
+              </div>
+
+              {/* 帖子列表 */}
+              <div className="mt-4 px-6 divide-y divide-zinc-100 pb-20">
+                {posts.map(post => (
+                    <PostCard 
+                      key={post.id} 
+                      post={post} 
+                      userProfile={userProfile} 
+                      characters={characters}
+                      onLike={() => {
+                        setPosts(prev => prev.map(p => p.id === post.id ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p));
+                      }}
+                      onComment={(content) => {
+                        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        const newComment = { id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, username: userProfile.name, content, likes: 0, time };
+                        setPosts(prev => prev.map(p => p.id === post.id ? { ...p, comments: [...p.comments, newComment] } : p));
+                      }}
+                      onForward={() => {
+                        setPostToForward(post);
+                        setIsForwardModalOpen(true);
+                      }}
+                      onClick={() => setSelectedPostId(post.id)}
+                      onLongPress={() => setPostActionTarget({ type: 'post', id: post.id, content: post.content })}
+                    />
+                ))}
+              </div>
+
+              <div className="p-10 text-center opacity-20 filter grayscale">
+                <p className="text-[9px] font-black uppercase tracking-[0.5em]">--- End of Space ---</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence mode="wait">
+          {selectedPostId && (
+            <motion.div
+              key="global-detail"
+              initial={{ opacity: 0, x: '100%' }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="fixed inset-0 z-[100] bg-white flex flex-col"
+            >
+              <PostDetailView 
+                post={posts.find(p => p.id === selectedPostId) || (messages || []).find(m => m.postForward?.id === selectedPostId)?.postForward}
+                onBack={() => {
+                  if (postDetailReturnChatId) {
+                    setActiveTab('messages');
+                    const char = characters.find(c => c.id === postDetailReturnChatId);
+                    if (char) setSelectedChat(char);
+                    setPostDetailReturnChatId(null);
+                  }
+                  setSelectedPostId(null);
+                  localStorage.removeItem('selected_post_id');
+                }}
+                userProfile={userProfile}
+                characters={characters}
+                onLikePost={() => {
+                  setPosts(prev => prev.map(p => p.id === selectedPostId ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p));
+                }}
+                onAddComment={(content, replyTo) => {
+                  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  const newComment = { id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, username: userProfile.name, content, likes: 0, replyTo, time };
+                  setPosts(prev => {
+                    const exists = prev.some(p => p.id === selectedPostId);
+                    if (!exists) {
+                      const forwardPost = messages.find(m => m.postForward?.id === selectedPostId)?.postForward;
+                      if (forwardPost) return [{ ...forwardPost, comments: [newComment] }, ...prev];
+                    }
+                    return prev.map(p => p.id === selectedPostId ? { ...p, comments: [...(p.comments || []), newComment] } : p);
+                  });
+                }}
+                onLikeComment={(commentId) => {
+                  setPosts(prev => prev.map(p => p.id === selectedPostId ? {
+                    ...p,
+                    comments: (p.comments || []).map(c => c.id === commentId ? { ...c, isLiked: !c.isLiked, likes: c.isLiked ? c.likes - 1 : c.likes + 1 } : c)
+                  } : p));
+                }}
+                onCommentLongPress={(id, content) => setPostActionTarget({ type: 'comment', id, parentId: selectedPostId!, content })}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -869,29 +876,29 @@ export default function App() {
       {/* 侧边栏系统 */}
       <AnimatePresence>
         {selectedChat && (
-          <motion.div 
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed inset-0 bg-white z-[60] flex flex-col pt-6"
-          >
-            {/* 聊天顶部 */}
-            <div className="flex items-center justify-between px-6 py-2 border-b border-gray-100 bg-white/80 backdrop-blur-md">
-              <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400">
-                <ChevronRight size={24} className="rotate-180" />
-              </button>
-              <div className="flex flex-col items-center">
-                <span className="font-bold text-zinc-900 text-sm tracking-tight">{chatSettings[selectedChat.id]?.nickname || selectedChat.name}</span>
-                <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1">• 在线</span>
+            <motion.div 
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed inset-0 bg-white z-[60] flex flex-col"
+            >
+              {/* 聊天顶部 - 抬高并缩短一半 */}
+              <div className="flex items-center justify-between px-6 py-2 border-b border-gray-100 bg-white/80 backdrop-blur-md h-12">
+                <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400">
+                  <ArrowLeft size={20} />
+                </button>
+                <div className="flex flex-col items-center">
+                  <span className="font-bold text-zinc-900 text-sm tracking-tight">{chatSettings[selectedChat.id]?.nickname || selectedChat.name}</span>
+                  <span className="text-[9px] text-emerald-500 font-black flex items-center gap-1 uppercase tracking-widest">• Online</span>
+                </div>
+                <button 
+                  onClick={() => setIsChatSettingsOpen(true)}
+                  className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400"
+                >
+                  <Settings2 size={20} />
+                </button>
               </div>
-              <button 
-                onClick={() => setIsChatSettingsOpen(true)}
-                className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400"
-              >
-                <Settings2 size={20} />
-              </button>
-            </div>
 
             <ChatSettingsModal 
               char={selectedChat} 
@@ -905,7 +912,7 @@ export default function App() {
 
             {/* 消息区域 (应用背景图) */}
             <div 
-              className="flex-1 overflow-y-auto p-6 space-y-6 bg-zinc-50/50 relative"
+              className="flex-1 overflow-y-auto px-3 py-6 space-y-6 bg-zinc-50/50 relative"
               style={chatSettings[selectedChat.id]?.background ? { backgroundImage: `url(${chatSettings[selectedChat.id]?.background})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
               onClick={() => {
                 setContextMenu(null);
@@ -979,7 +986,7 @@ export default function App() {
                 return (
                   <div 
                     key={msg.id} 
-                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} items-end gap-2 group relative`}
+                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} ${msg.postForward ? 'items-start' : 'items-end'} gap-2 group relative`}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({ x: e.clientX, y: e.clientY, msgId: msg.id });
@@ -1016,7 +1023,7 @@ export default function App() {
                     {msg.type === 'voice' ? (
                       <VoiceBubble 
                         role={msg.role} 
-                        duration={Math.min(msg.content.length * 0.5, 60).toFixed(0)} 
+                        duration={Math.min((msg.content || '').length * 0.5, 60).toFixed(0)} 
                         style={bubbleStyle}
                         glassClass={glassClass}
                         transcribedText={msg.content}
@@ -1043,37 +1050,35 @@ export default function App() {
                       />
                     ) : (
                       <div 
-                        className={msg.postForward ? "w-full" : `relative p-4 ${msg.role === 'user' ? (settings.userBubbleColor ? '' : 'bg-zinc-900 text-white') : (settings.charBubbleColor ? '' : 'bg-white text-zinc-800 border border-gray-100 shadow-xl shadow-zinc-100/50')} rounded-3xl ${msg.role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} font-medium leading-relaxed ${glassClass} overflow-hidden`}
+                        className={msg.postForward ? "w-full flex" : `relative p-4 ${msg.role === 'user' ? (settings.userBubbleColor ? '' : 'bg-zinc-900 text-white') : (settings.charBubbleColor ? '' : 'bg-white text-zinc-800 border border-gray-100 shadow-xl shadow-zinc-100/50')} rounded-3xl ${msg.role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} font-medium leading-relaxed ${glassClass} overflow-hidden`}
                         style={msg.postForward ? {} : bubbleStyle}
                       >
                         {msg.postForward ? (
                           <div 
                             onClick={() => {
-                              setPostDetailReturnChatId(selectedChat.id);
-                              setSelectedChat(null);
-                              setActiveTab('space');
-                              setSelectedPostId(msg.postForward.id);
+                              setPostDetailReturnChatId(selectedChat!.id);
+                              setSelectedPostId(msg.postForward!.id);
                             }}
-                            className="w-[60%] aspect-[4/2] bg-white border border-zinc-100 rounded-2xl p-3 flex flex-col justify-between cursor-pointer hover:bg-zinc-50 transition-colors shadow-sm ml-auto"
+                            className={`w-[60%] aspect-[4/2] bg-white border border-zinc-100 rounded-2xl p-4 flex flex-col justify-between cursor-pointer hover:bg-zinc-50 transition-all active:scale-[0.98] shadow-sm relative ${msg.role === 'user' ? 'ml-auto' : 'mr-auto'}`}
                           >
                             <div className="flex items-center gap-2 border-b border-zinc-50 pb-2">
-                              <div className="w-4 h-4 rounded bg-zinc-900 flex items-center justify-center text-[7px] font-black text-white shrink-0">
-                                {msg.postForward.type === 'ai' ? 'AI' : (userProfile.avatar ? <img src={userProfile.avatar} className="w-full h-full object-cover rounded" /> : 'M')}
+                              <div className="w-5 h-5 rounded-md bg-zinc-900 flex items-center justify-center text-[8px] font-black text-white shrink-0">
+                                {msg.postForward.type === 'ai' ? 'AI' : (userProfile.avatar ? <img src={userProfile.avatar} className="w-full h-full object-cover rounded-md" /> : 'M')}
                               </div>
-                              <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter truncate">
+                              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-tighter truncate">
                                 {msg.postForward.type === 'ai' ? (characters[0]?.name || '助手') : userProfile.name}
                               </span>
                             </div>
                             
-                            <div className="flex-1 py-1 overflow-hidden">
-                              <p className="text-[10px] text-zinc-500 leading-tight line-clamp-2 italic">
+                            <div className="flex-1 py-2 overflow-hidden">
+                              <p className="text-[11px] text-zinc-600 leading-snug line-clamp-2 italic">
                                 {msg.postForward.content}
                               </p>
                             </div>
 
-                            <div className="flex items-center justify-between mt-1 pt-1 border-t border-zinc-50/50">
-                              <span className="text-[7px] text-zinc-300 font-black uppercase tracking-widest">Discovery</span>
-                              <ArrowRight size={8} className="text-zinc-300" />
+                            <div className="flex items-center justify-between mt-1 pt-2 border-t border-zinc-50/50">
+                              <span className="text-[8px] text-zinc-300 font-black uppercase tracking-widest">Discovery Card</span>
+                              <ArrowRight size={10} className="text-zinc-300" />
                             </div>
                           </div>
                         ) : (
@@ -1113,7 +1118,7 @@ export default function App() {
             </div>
 
             {/* 输入栏 */}
-            <div className="p-6 pb-8 flex flex-col gap-3 bg-white relative">
+            <div className="p-4 flex flex-col gap-3 bg-white relative">
               {/* 引用/编辑预览区域 */}
               <AnimatePresence>
                 {(quotedMessage || editingMessageId || isMultiSelectMode) && (
@@ -1148,6 +1153,40 @@ export default function App() {
                   </motion.div>
                 )}
               </AnimatePresence>
+              
+              <div className="flex items-end gap-3">
+                <button 
+                  onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}
+                  className={`mb-1 p-2 hover:bg-zinc-50 rounded-xl transition-all ${isPlusMenuOpen ? 'rotate-45 text-zinc-900' : 'text-zinc-400'}`}
+                >
+                  <Plus size={22} />
+                </button>
+                <div className="flex-1 bg-zinc-50 rounded-2xl px-4 py-2 min-h-[44px] flex items-center border border-zinc-100">
+                  <textarea
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (inputMessage.trim()) {
+                          handleSendMessage(inputMessage);
+                          setInputMessage('');
+                        }
+                      }
+                    }}
+                    placeholder="Type a message..."
+                    className="w-full bg-transparent border-none focus:ring-0 text-sm resize-none py-1 custom-scrollbar"
+                    rows={Math.min(inputMessage.split('\n').length, 5)}
+                  />
+                  <button onClick={() => setIsEmojiPickerOpen(!isEmojiPickerOpen)} className="p-2 text-zinc-400 hover:text-zinc-600"><Smile size={18} /></button>
+                </div>
+                <button 
+                  onClick={() => setIsTyping(!isTyping)} // 单击获取 AI 回复 (模拟)
+                  className="mb-1 w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center text-white shadow-xl active:scale-90 transition-all shrink-0"
+                >
+                  <Sparkles size={18} />
+                </button>
+              </div>
               {isPlusMenuOpen && (
                 <motion.div 
                   initial={{ y: 20, opacity: 0 }}
@@ -1160,31 +1199,6 @@ export default function App() {
                   <PlusMenuItem icon={ImageIcon} label="图库" onClick={() => alert('从本地选择图片')} />
                 </motion.div>
               )}
-
-              <div className="flex items-center gap-3">
-                <div className={`flex-1 border rounded-2xl flex items-center px-4 py-0.5 transition-all ${isVoiceMode ? 'bg-zinc-900 border-zinc-900' : 'bg-zinc-50 border-gray-100'}`}>
-                  <input 
-                    type="text" 
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(true)}
-                    placeholder={isVoiceMode ? "按下发送将转为语音..." : (isTyping ? "正在思考..." : "发送消息...")} 
-                    className={`bg-transparent border-none flex-1 py-2 text-sm focus:ring-0 font-medium ${isVoiceMode ? 'text-white placeholder:text-zinc-500' : 'text-zinc-900'}`} 
-                  />
-                  <PlusCircle 
-                    size={22} 
-                    className={`ml-2 cursor-pointer transition-transform ${isPlusMenuOpen ? 'rotate-45 text-zinc-900' : 'text-zinc-300 hover:text-zinc-500'} ${isVoiceMode ? 'text-zinc-500' : ''}`} 
-                    onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}
-                  />
-                </div>
-                <button 
-                  onClick={() => handleSendMessage(true)}
-                  disabled={isTyping}
-                  className="w-10 h-10 bg-zinc-900 rounded-2xl flex items-center justify-center text-white shadow-lg active:scale-95 transition-all disabled:opacity-50 shrink-0"
-                >
-                  <Send size={16} />
-                </button>
-              </div>
             </div>
           </motion.div>
         )}
@@ -1415,6 +1429,7 @@ export default function App() {
                   <>
                     <div className="space-y-2">
                       <SidebarItem icon={Settings} label="设置" onClick={() => setSidebarView('settings')} />
+                      <SidebarItem icon={Zap} label="后台弹窗" onClick={() => setSidebarView('popup')} />
                       <SidebarItem icon={Palette} label="美化" onClick={() => setSidebarView('beauty')} />
                       <SidebarItem icon={CalendarIcon} label="日历" onClick={() => setSidebarView('calendar')} />
                       <SidebarItem icon={BookOpen} label="课表" onClick={() => setSidebarView('schedule')} />
@@ -1458,6 +1473,53 @@ export default function App() {
                     </button>
                     
                     {/* 子功能界面 */}
+                    {sidebarView === 'popup' && (
+                      <div className="space-y-8 p-2">
+                        <div className="p-8 bg-zinc-900 rounded-[2.5rem] text-white space-y-6 shadow-2xl relative overflow-hidden">
+                          <div className="relative z-10">
+                            <h3 className="text-xl font-black italic tracking-tighter mb-2">SYSTEM POPUP</h3>
+                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest leading-relaxed">
+                              Enable background notifications and simulate system alerts for proactive engagement.
+                            </p>
+                          </div>
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl" />
+                        </div>
+
+                        <div className="bg-white border border-zinc-100 rounded-[2rem] p-6 space-y-6">
+                           <div className="flex items-center justify-between">
+                              <div className="flex flex-col">
+                                <span className="text-sm font-black uppercase">开启后台弹窗</span>
+                                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-tight">System Notification Toggle</span>
+                              </div>
+                              <button 
+                                onClick={() => setIsPopupEnabled(!isPopupEnabled)}
+                                className={`w-14 h-8 rounded-full transition-all flex items-center px-1 ${isPopupEnabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
+                              >
+                                <motion.div 
+                                  animate={{ x: isPopupEnabled ? 24 : 0 }}
+                                  className="w-6 h-6 bg-white rounded-full shadow-sm"
+                                />
+                              </button>
+                           </div>
+
+                           <div className="pt-4 border-t border-zinc-50">
+                              <button 
+                                onClick={() => alert('【测试弹窗】您有一条来自角色的未读消息！')}
+                                className="w-full py-4 bg-zinc-50 hover:bg-zinc-100 rounded-2xl flex items-center justify-center gap-3 transition-colors active:scale-95"
+                              >
+                                <Bell size={18} className="text-zinc-400" />
+                                <span className="text-xs font-black uppercase tracking-widest text-zinc-600">测试弹窗效果</span>
+                              </button>
+                           </div>
+                        </div>
+
+                        <div className="p-6 bg-amber-50 rounded-2xl border border-amber-100">
+                          <p className="text-[10px] text-amber-700 font-bold leading-relaxed">
+                            注意: 如果是在浏览器环境，请确保已授予通知权限。当前为模拟环境，将以应用内浮窗或系统弹窗形式呈现。
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     {sidebarView === 'settings' && (
                       <div className="space-y-6 p-2">
                         <h3 className="font-black text-xs tracking-widest uppercase">API Endpoint Node</h3>
@@ -1786,6 +1848,7 @@ export default function App() {
 
 function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, ImageUploader, setCharacters }: any) {
   const [localSettings, setLocalSettings] = useState<any>(null);
+  const [expandedSections, setExpandedSections] = useState<string[]>(['char', 'aesthetics']);
 
   useEffect(() => {
     if (isOpen) {
@@ -1803,75 +1866,195 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
   const handleSave = () => {
     try {
       setChatSettings((prev: any) => ({ ...prev, [char.id]: localSettings }));
-      // 自动填充全局角色列表头像
       if (localSettings.charAvatar) {
         setCharacters((prev: Character[]) => prev.map(c => c.id === char.id ? { ...c, avatar: localSettings.charAvatar } : c));
       }
       onClose();
     } catch (e) {
-      alert('保存失败：存储空间不足。请尝试清除缓存或减小图片大小。');
-      console.error(e);
+      alert('保存失败：存储空间不足。');
     }
   };
 
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => 
+      prev.includes(section) ? prev.filter(s => s !== section) : [...prev, section]
+    );
+  };
+
   return (
-    <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="absolute inset-x-0 bottom-0 top-[10%] bg-white z-[100] rounded-t-[3rem] shadow-2xl p-8 flex flex-col pt-16">
-      <div className="w-12 h-1 bg-zinc-100 rounded-full mx-auto mb-6 shrink-0" />
-      <button onClick={onClose} className="absolute top-8 right-8 p-2 bg-zinc-50 rounded-full text-zinc-400 hover:text-black hover:bg-zinc-100 transition-all"><X size={20}/></button>
-      <h3 className="text-xl font-black mb-8 tracking-tighter uppercase">CALIBRATION: {char.name}</h3>
+    <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="absolute inset-0 bg-white z-[100] flex flex-col pt-12">
+      <div className="flex justify-between items-center px-8 mb-6">
+        <h3 className="text-xl font-black tracking-tighter uppercase">Settings</h3>
+        <button onClick={onClose} className="p-2 bg-zinc-50 rounded-full text-zinc-400"><X size={20}/></button>
+      </div>
       
-      <div className="flex-1 overflow-y-auto space-y-8 pb-10 pr-2">
-        <div className="space-y-2">
-          <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest pl-1">联系人昵称 (Nickname)</span>
-          <input placeholder="修改备注简称" value={localSettings.nickname || ''} onChange={e => setLocalSettings({...localSettings, nickname: e.target.value})} className="w-full bg-zinc-50 border-none rounded-2xl p-5 text-sm font-bold focus:ring-1 focus:ring-zinc-900" />
-        </div>
-
-        <ImageUploader label="节点图标 (Char Avatar)" onUpload={(u:any) => setLocalSettings({...localSettings, charAvatar: u})} />
-        <ImageUploader label="对话视角头像 (User Avatar)" onUpload={(u:any) => setLocalSettings({...localSettings, userAvatar: u})} />
-        <ImageUploader label="虚拟背景 (Background Layer)" onUpload={(u:any) => setLocalSettings({...localSettings, background: u})} />
-
-        <div className="grid grid-cols-2 gap-4">
-          <SettingSlider label="头像大小" value={localSettings.avatarSize || 36} min={20} max={80} onChange={(v:any) => setLocalSettings({...localSettings, avatarSize: v})} />
-          <SettingSlider label="气泡内边距" value={localSettings.bubblePadding || 16} min={8} max={40} onChange={(v:any) => setLocalSettings({...localSettings, bubblePadding: v})} />
-          <SettingSlider label="最大宽度 (%)" value={localSettings.bubbleWidth || 85} min={30} max={98} onChange={(v:any) => setLocalSettings({...localSettings, bubbleWidth: v})} />
-          <SettingSlider label="字体大小 (px)" value={localSettings.fontSize || 14} min={10} max={24} onChange={(v:any) => setLocalSettings({...localSettings, fontSize: v})} />
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-zinc-50 rounded-2xl">
-            <span className="text-xs font-bold text-zinc-600">气泡磨砂效果</span>
-            <button 
-              onClick={() => setLocalSettings({...localSettings, frostedGlass: !localSettings.frostedGlass})}
-              className={`w-10 h-5 rounded-full transition-colors flex items-center px-1 ${localSettings.frostedGlass ? 'bg-zinc-900' : 'bg-zinc-200'}`}
-            >
-              <div className={`w-3 h-3 bg-white rounded-full transition-transform ${localSettings.frostedGlass ? 'translate-x-5' : ''}`} />
-            </button>
-          </div>
+      <div className="flex-1 overflow-y-auto px-6 space-y-4 pb-24 custom-scrollbar">
+        {/* 角色设置 */}
+        <div className="border border-zinc-100 rounded-[2rem] overflow-hidden bg-white shadow-sm">
+          <button 
+            onClick={() => toggleSection('char')}
+            className="w-full px-6 py-5 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <User size={18} className="text-zinc-400" />
+              <span className="text-sm font-black uppercase tracking-wider">角色设置</span>
+            </div>
+            {expandedSections.includes('char') ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </button>
           
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">我方气泡颜色</span>
-              <input type="color" value={localSettings.userBubbleColor || '#18181b'} onChange={e => setLocalSettings({...localSettings, userBubbleColor: e.target.value})} className="w-full h-10 rounded-xl cursor-pointer" />
+          {expandedSections.includes('char') && (
+            <div className="px-6 pb-6 space-y-6 pt-2 animate-in slide-in-from-top-4">
+              <div className="space-y-2">
+                <span className="text-[10px] font-black text-zinc-300 uppercase tracking-widest pl-1">联系人昵称</span>
+                <input 
+                  placeholder="修改备注简称" 
+                  value={localSettings.nickname || ''} 
+                  onChange={e => setLocalSettings({...localSettings, nickname: e.target.value})} 
+                  className="w-full bg-zinc-50 border-none rounded-2xl p-4 text-xs font-bold focus:ring-1 focus:ring-zinc-900" 
+                />
+              </div>
+              <ImageUploader label="节点图标 (Char Avatar)" onUpload={(u:any) => setLocalSettings({...localSettings, charAvatar: u})} />
+              <ImageUploader label="我的专属头像 (Local User Avatar)" onUpload={(u:any) => setLocalSettings({...localSettings, userAvatar: u})} />
+              
+              <div className="space-y-2">
+                <span className="text-[10px] font-black text-zinc-300 uppercase tracking-widest pl-1">角色设定 (Prompt)</span>
+                <textarea 
+                  placeholder="在此输入角色的性格、语言风格、背景故事等设定。示例：你是一个傲娇的猫娘，说话喜欢带'喵'..." 
+                  value={localSettings.prompt || ''} 
+                  onChange={e => setLocalSettings({...localSettings, prompt: e.target.value})} 
+                  className="w-full h-32 bg-zinc-50 rounded-2xl p-4 text-xs font-medium border-none focus:ring-1 focus:ring-zinc-900 leading-relaxed" 
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">对方气泡颜色</span>
-              <input type="color" value={localSettings.charBubbleColor || '#ffffff'} onChange={e => setLocalSettings({...localSettings, charBubbleColor: e.target.value})} className="w-full h-10 rounded-xl cursor-pointer" />
-            </div>
-          </div>
+          )}
         </div>
 
-        <div className="space-y-2">
-          <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest pl-1">个性化 CSS 注入</span>
-          <textarea placeholder=".bubble { border: 2px solid #000; }" value={localSettings.customCss || ''} onChange={e => setLocalSettings({...localSettings, customCss: e.target.value})} className="w-full h-32 bg-zinc-50 rounded-2xl p-5 text-xs font-mono border-none focus:ring-1 focus:ring-zinc-900" />
+        {/* 窗口美化 */}
+        <div className="border border-zinc-100 rounded-[2rem] overflow-hidden bg-white shadow-sm">
+          <button 
+            onClick={() => toggleSection('aesthetics')}
+            className="w-full px-6 py-5 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Palette size={18} className="text-zinc-400" />
+              <span className="text-sm font-black uppercase tracking-wider">窗口美化</span>
+            </div>
+            {expandedSections.includes('aesthetics') ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </button>
+          
+          {expandedSections.includes('aesthetics') && (
+            <div className="px-6 pb-6 space-y-8 pt-2 animate-in slide-in-from-top-4">
+              <ImageUploader label="聊天背景 (Background)" onUpload={(u:any) => setLocalSettings({...localSettings, background: u})} />
+              
+              <div className="grid grid-cols-2 gap-6">
+                <SettingSlider label="头像大小" value={localSettings.avatarSize || 36} min={24} max={64} onChange={(v:any) => setLocalSettings({...localSettings, avatarSize: v})} />
+                <SettingSlider label="气泡间距" value={localSettings.bubblePadding || 16} min={8} max={32} onChange={(v:any) => setLocalSettings({...localSettings, bubblePadding: v})} />
+                <SettingSlider label="气泡宽度" value={localSettings.bubbleWidth || 75} min={40} max={95} onChange={(v:any) => setLocalSettings({...localSettings, bubbleWidth: v})} />
+                <SettingSlider label="字体大小" value={localSettings.fontSize || 14} min={10} max={22} onChange={(v:any) => setLocalSettings({...localSettings, fontSize: v})} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <span className="text-[10px] font-black text-zinc-300 uppercase pl-1">我方气泡</span>
+                  <input type="color" value={localSettings.userBubbleColor || '#18181b'} onChange={e => setLocalSettings({...localSettings, userBubbleColor: e.target.value})} className="w-full h-10 rounded-xl cursor-pointer bg-zinc-50 p-1" />
+                </div>
+                <div className="space-y-2">
+                  <span className="text-[10px] font-black text-zinc-300 uppercase pl-1">对方气泡</span>
+                  <input type="color" value={localSettings.charBubbleColor || '#ffffff'} onChange={e => setLocalSettings({...localSettings, charBubbleColor: e.target.value})} className="w-full h-10 rounded-xl cursor-pointer bg-zinc-50 p-1" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <span className="text-[10px] font-black text-zinc-300 uppercase tracking-widest pl-1">自定义 CSS 美化</span>
+                <textarea 
+                  placeholder=".bubble { backdrop-filter: blur(10px); }" 
+                  value={localSettings.customCss || ''} 
+                  onChange={e => setLocalSettings({...localSettings, customCss: e.target.value})} 
+                  className="w-full h-32 bg-zinc-50 rounded-2xl p-4 text-[10px] font-mono border-none focus:ring-1 focus:ring-zinc-900" 
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 聊天功能 */}
+        <div className="border border-zinc-100 rounded-[2rem] overflow-hidden bg-white shadow-sm">
+          <button 
+            onClick={() => toggleSection('functions')}
+            className="w-full px-6 py-5 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Zap size={18} className="text-zinc-400" />
+              <span className="text-sm font-black uppercase tracking-wider">聊天功能</span>
+            </div>
+            {expandedSections.includes('functions') ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </button>
+          
+          {expandedSections.includes('functions') && (
+            <div className="px-6 pb-12 space-y-8 pt-4 animate-in slide-in-from-top-4">
+              <div className="space-y-4">
+                <span className="text-[10px] font-black text-zinc-800 uppercase tracking-widest pl-1">角色单次回复对话条数</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[9px] text-zinc-400 font-bold ml-1">最少 (Min)</span>
+                    <input 
+                      type="number" 
+                      value={localSettings.minResponses || 1} 
+                      onChange={e => setLocalSettings({...localSettings, minResponses: parseInt(e.target.value) || 1})}
+                      className="w-full bg-zinc-50 border-none rounded-xl p-3 text-xs font-bold focus:ring-1 focus:ring-zinc-900" 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[9px] text-zinc-400 font-bold ml-1">最多 (Max)</span>
+                    <input 
+                      type="number" 
+                      value={localSettings.maxResponses || 1} 
+                      onChange={e => setLocalSettings({...localSettings, maxResponses: parseInt(e.target.value) || 1})}
+                      className="w-full bg-zinc-50 border-none rounded-xl p-3 text-xs font-bold focus:ring-1 focus:ring-zinc-900" 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-[10px] font-black text-zinc-800 uppercase tracking-widest">角色主动消息 (间隔/min)</span>
+                  <input 
+                    type="number" 
+                    value={localSettings.proactiveInterval || 0} 
+                    onChange={e => setLocalSettings({...localSettings, proactiveInterval: parseInt(e.target.value) || 0})}
+                    className="w-20 bg-zinc-50 border-none rounded-xl p-2 text-xs font-mono font-bold text-right focus:ring-1 focus:ring-zinc-900" 
+                  />
+                </div>
+                <p className="text-[9px] text-zinc-300 italic px-1">设置为 0 则关闭主动消息功能</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-[10px] font-black text-zinc-800 uppercase tracking-widest">后台消息 (间隔/min)</span>
+                  <input 
+                    type="number" 
+                    value={localSettings.backgroundInterval || 0} 
+                    onChange={e => setLocalSettings({...localSettings, backgroundInterval: parseInt(e.target.value) || 0})}
+                    className="w-20 bg-zinc-50 border-none rounded-xl p-2 text-xs font-mono font-bold text-right focus:ring-1 focus:ring-zinc-900" 
+                  />
+                </div>
+                <p className="text-[9px] text-zinc-300 italic px-1">界面在后台时模拟角色发送的消息间隔</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      <button 
-        onClick={handleSave}
-        className="w-full bg-zinc-900 text-white font-black uppercase tracking-widest py-5 rounded-3xl active:scale-95 transition-all shadow-xl shadow-zinc-200 mt-4 shrink-0"
-      >
-        Save Settings
-      </button>
+
+      <div className="p-8 border-t border-zinc-50 bg-white shadow-up-sm sticky bottom-0">
+        <button 
+          onClick={handleSave}
+          className="w-full bg-zinc-900 text-white font-black uppercase tracking-widest py-5 rounded-[2rem] active:scale-95 transition-all shadow-xl shadow-zinc-200"
+        >
+          Save Configurations
+        </button>
+      </div>
     </motion.div>
   );
 }
@@ -2181,7 +2364,7 @@ function PostDetailView({ post, onBack, userProfile, characters, onLikePost, onA
         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-300 pr-8">Discovery Detail</span>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 pb-20 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto px-6 pb-24 custom-scrollbar">
         <PostCard 
           post={post} 
           userProfile={userProfile} 
@@ -2191,64 +2374,74 @@ function PostDetailView({ post, onBack, userProfile, characters, onLikePost, onA
         />
 
         <div className="mt-4 pb-4 border-b border-zinc-50">
-          <span className="text-[10px] font-black uppercase text-zinc-300 tracking-widest">Comments ({(post.comments || []).length})</span>
+          <span className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">Comments ({(post.comments || []).length})</span>
         </div>
 
-        <div className="space-y-6 mt-6">
+        <div className="space-y-8 mt-8 pb-10 px-0.5">
           {(post.comments || []).map((comment: any) => (
             <div 
               key={comment.id} 
-              className="flex gap-3 animate-in fade-in"
+              className={`group animate-in fade-in ${comment.replyTo ? 'ml-8 pl-4 border-l-2 border-zinc-50' : ''}`}
               onContextMenu={(e) => { e.preventDefault(); onCommentLongPress(comment.id, comment.content); }}
-              onTouchStart={() => { 
-                const timer = setTimeout(() => onCommentLongPress(comment.id, comment.content), 800);
-                (window as any).commentTimer = timer;
-              }}
-              onTouchEnd={() => { 
-                clearTimeout((window as any).commentTimer); 
-              }}
+              onTouchStart={() => { (window as any).commentTimer = setTimeout(() => onCommentLongPress(comment.id, comment.content), 800); }}
+              onTouchEnd={() => { clearTimeout((window as any).commentTimer); }}
             >
-              <div className="w-8 h-8 rounded-xl bg-zinc-100 flex items-center justify-center flex-shrink-0 text-[10px] font-black">
-                {comment.username[0]}
-              </div>
-              <div className="flex-1 space-y-1">
-                <div className="flex justify-between items-center">
-                  <span className="text-[11px] font-black text-zinc-900">{comment.username}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[9px] text-zinc-300 font-mono italic">{comment.time}</span>
+              <div className="flex gap-3">
+                <div className={`${comment.replyTo ? 'w-8 h-8' : 'w-10 h-10'} rounded-xl bg-zinc-100 flex items-center justify-center flex-shrink-0 text-[10px] font-black overflow-hidden border border-zinc-50`}>
+                  {comment.username === userProfile.name ? (
+                    userProfile.avatar ? <img src={userProfile.avatar} className="w-full h-full object-cover" /> : userProfile.name[0]
+                  ) : (
+                    characters.find((c: any) => c.name === comment.username)?.avatar ? 
+                    <img src={characters.find((c: any) => c.name === comment.username)?.avatar} className="w-full h-full object-cover" /> : 
+                    comment.username[0]
+                  )}
+                </div>
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <span className={`${comment.replyTo ? 'text-[11px]' : 'text-xs'} font-black text-zinc-900`}>
+                      {comment.username}
+                      {comment.replyTo && <span className="ml-2 text-zinc-300 font-medium">replied</span>}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] text-zinc-500 font-mono italic">{comment.time}</span>
+                      <button 
+                        onClick={() => onLikeComment(comment.id)}
+                        className={`flex items-center gap-1 transition-all ${comment.isLiked ? 'text-red-500' : 'text-zinc-300 hover:text-zinc-500'}`}
+                      >
+                        <Heart size={comment.replyTo ? 10 : 12} fill={comment.isLiked ? 'currentColor' : 'none'} />
+                        <span className="text-[9px] font-bold">{comment.likes || ''}</span>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <p className={`${comment.replyTo ? 'text-xs' : 'text-sm'} text-zinc-600 leading-relaxed bg-white`}>
+                    {comment.content}
+                  </p>
+                  
+                  <div className="pt-1 flex items-center gap-4">
                     <button 
-                      onClick={() => onLikeComment(comment.id)}
-                      className={`flex items-center gap-1 transition-all ${comment.isLiked ? 'text-red-500' : 'text-zinc-300'}`}
+                      onClick={() => {
+                        setReplyTo(comment.username);
+                        const el = document.getElementById('detail-comment-input');
+                        el?.focus();
+                      }}
+                      className="text-[10px] font-black text-zinc-300 uppercase tracking-widest hover:text-zinc-900 transition-colors"
                     >
-                      <Heart size={10} fill={comment.isLiked ? 'currentColor' : 'none'} />
-                      <span className="text-[8px] font-bold">{comment.likes || ''}</span>
+                      Reply
                     </button>
                   </div>
                 </div>
-                <p className="text-[11px] text-zinc-500 leading-relaxed">
-                  {comment.replyTo && <span className="text-zinc-300 mr-1 italic font-medium">@{comment.replyTo}</span>}
-                  {comment.content}
-                </p>
-                <button 
-                  onClick={() => {
-                    setReplyTo(comment.username);
-                    const el = document.getElementById('detail-comment-input');
-                    el?.focus();
-                  }}
-                  className="text-[9px] font-black text-zinc-300 uppercase tracking-widest mt-1 hover:text-zinc-900"
-                >
-                  Reply
-                </button>
               </div>
             </div>
           ))}
-          {post.comments.length === 0 && (
-            <div className="text-center py-10 text-[9px] font-black text-zinc-200 uppercase tracking-widest">No comments exploration yet</div>
+          {(post.comments || []).length === 0 && (
+            <div className="text-center py-20 text-[10px] font-black text-zinc-200 uppercase tracking-widest">No discovery reflections yet</div>
           )}
         </div>
       </div>
 
-      <div className="p-6 bg-white border-t border-zinc-50">
+      <div className="fixed bottom-0 left-0 right-0 p-6 bg-white/90 backdrop-blur-xl border-t border-zinc-50 shadow-[0_-10px_30px_rgba(0,0,0,0.02)] z-30">
+
         <div className="flex flex-col gap-2">
           {replyTo && (
             <div className="flex items-center justify-between px-3 py-1 bg-zinc-50 rounded-lg">

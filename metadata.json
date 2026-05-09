@@ -1,6 +1,6 @@
 {
   "name": "Personal AI Assistant",
-  "description": "一个外观简约柔和、具有极简主义风格的聊天应用大框架，支持API接口接入、自定义CSS美化及待办日历。",
+  "description": "一个外观简约柔和、支持AI角色聊天、朋友圈社交、贴纸Hub、课程表及待办日历的全方位个人AI助手。",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
