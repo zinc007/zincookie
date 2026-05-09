@@ -29,7 +29,15 @@ import {
   Check,
   Download,
   UploadCloud,
-  HardDrive
+  HardDrive,
+  Heart,
+  MessageCircle,
+  Share2,
+  Camera,
+  Quote,
+  ArrowLeft,
+  Edit3,
+  Edit
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -48,6 +56,7 @@ interface Message {
     amount: string;
     remark: string;
   };
+  postForward?: Post;
 }
 
 interface BeautyPreset {
@@ -89,6 +98,37 @@ interface Sticker {
   id: string;
   name: string;
   url: string;
+}
+
+interface PostComment {
+  id: string;
+  username: string;
+  content: string;
+  likes: number;
+  isLiked?: boolean;
+  replyTo?: string;
+  time: string;
+}
+
+interface Post {
+  id: string;
+  content: string;
+  image?: string;
+  isTextImage?: boolean;
+  date: string;
+  type: 'user' | 'ai';
+  likes: number;
+  isLiked?: boolean;
+  comments: PostComment[];
+}
+
+interface UserProfile {
+  name: string;
+  username: string;
+  signature: string;
+  avatar: string;
+  background: string;
+  status: string;
 }
 
 interface ChatSettings {
@@ -149,7 +189,14 @@ export default function App() {
 
   // 用户资料状态
   const [userProfile, setUserProfile] = useState(() => 
-    getSafeStorage('user_profile', { name: 'User Name', status: 'ID_2026.0508', avatar: '' })
+    getSafeStorage('user_profile', { 
+      name: 'User Name', 
+      username: '@user_id',
+      signature: 'Stay curious, keep cookie.',
+      status: 'ID_2026.0508', 
+      avatar: '',
+      background: '' 
+    })
   );
 
   // 核心数据状态 (带本地持久化)
@@ -171,9 +218,17 @@ export default function App() {
     getSafeStorage('chat_settings', {})
   );
 
-  const [posts, setPosts] = useState<{id: string, content: string, date: string, type: 'user' | 'ai'}[]>(() => {
+  const [posts, setPosts] = useState<Post[]>(() => {
     const data = getSafeStorage('app_posts', [
-      { id: '1', content: '今天开启我的新计划。', date: '5月8日', type: 'user' }
+      { 
+        id: '1', 
+        content: '今天开启我的新计划。', 
+        date: '5月8日', 
+        type: 'user',
+        likes: 0,
+        isLiked: false,
+        comments: [] 
+      }
     ]);
     const seen = new Set();
     return data.filter((item: any) => item.id && !seen.has(item.id) && seen.add(item.id));
@@ -216,6 +271,11 @@ export default function App() {
 
   const [isChatSettingsOpen, setIsChatSettingsOpen] = useState(false);
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
+  const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
+  const [isForwardModalOpen, setIsForwardModalOpen] = useState(false);
+  const [postToForward, setPostToForward] = useState<Post | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [postActionTarget, setPostActionTarget] = useState<{ type: 'post' | 'comment', id: string, parentId?: string, content: string } | null>(null);
 
   // 消息与美化增强状态
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -548,51 +608,128 @@ export default function App() {
           {activeTab === 'space' && (
             <motion.div 
               key="space"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="p-6 space-y-6"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col pb-20 overflow-y-auto h-full bg-white"
             >
-              <div className="flex justify-between items-center bg-white p-4 rounded-3xl shadow-sm border border-gray-50">
-                <span className="font-bold text-zinc-800">所有动态</span>
-                <button 
-                  onClick={() => {
-                    const content = prompt('发布新动态：');
-                    if (content) setPosts(prev => [{ id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, content, date: '刚刚', type: 'user' }, ...prev]);
-                  }}
-                  className="bg-zinc-900 text-white text-xs px-4 py-2 rounded-xl font-bold"
-                >
-                  发布
-                </button>
-              </div>
-
-              {posts.map(post => (
-                <div key={post.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-50 group">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className={`w-10 h-10 rounded-xl ${post.type === 'ai' ? 'bg-indigo-500' : 'bg-zinc-900'} flex items-center justify-center text-white text-xs font-bold overflow-hidden`}>
-                      {post.type === 'ai' ? (
-                        (characters[0]?.avatar ? <img src={characters[0].avatar} className="w-full h-full object-cover" /> : 'AI')
+              <AnimatePresence mode="wait">
+                {!selectedPostId ? (
+                  <motion.div 
+                    key="list"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                  >
+                    {/* 背景区域 */}
+                    <div className="relative h-[33vh] w-full bg-zinc-100 group">
+                      {userProfile.background ? (
+                        <img src={userProfile.background} className="w-full h-full object-cover" />
                       ) : (
-                        (userProfile.avatar ? <img src={userProfile.avatar} className="w-full h-full object-cover" /> : 'ME')
+                        <div className="w-full h-full flex items-center justify-center text-zinc-300 bg-zinc-50 font-black uppercase tracking-widest text-4xl opacity-10">
+                          Cookie Space
+                        </div>
                       )}
-                    </div>
-                    <div>
-                      <div className="font-bold text-sm">
-                        {post.type === 'ai' ? (characters[0]?.name || '智能助手') : userProfile.name}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60" />
+                      
+                      {/* 背景切换 */}
+                      <button 
+                        onClick={() => {
+                          const url = prompt('背景图片 URL:', userProfile.background);
+                          if (url !== null) setUserProfile({ ...userProfile, background: url });
+                        }}
+                        className="absolute top-4 left-4 p-2 bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-full text-white transition-all opacity-0 group-hover:opacity-100"
+                      >
+                        <Camera size={16} />
+                      </button>
+
+                      {/* 发布按钮 */}
+                      <button 
+                        onClick={() => setIsCreatePostModalOpen(true)}
+                        className="absolute top-4 right-4 w-10 h-10 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-xl"
+                      >
+                        <Plus size={24} />
+                      </button>
+
+                      {/* 用户头像 (外挑完整显示) */}
+                      <div className="absolute -bottom-8 right-8 z-10">
+                        <div 
+                          onClick={() => {
+                            const url = prompt('头像 URL:', userProfile.avatar);
+                            if (url !== null) setUserProfile({ ...userProfile, avatar: url });
+                          }}
+                          className="w-24 h-24 rounded-[1.8rem] border-[6px] border-white bg-zinc-900 shadow-2xl overflow-hidden cursor-pointer active:scale-95 transition-all"
+                        >
+                          {userProfile.avatar ? (
+                            <img src={userProfile.avatar} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center"><User className="text-white" size={40} /></div>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-[10px] text-zinc-300 font-mono italic">{post.date}</div>
                     </div>
-                  </div>
-                  <p className="text-sm text-zinc-600 leading-relaxed">{post.content}</p>
-                </div>
-              ))}
-              
-              <button 
-                onClick={() => setPosts(prev => [{ id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, content: 'AI 自动发现：这是一个美好的瞬间。', date: '刚刚', type: 'ai' }, ...prev])}
-                className="w-full py-4 border border-dashed border-indigo-200 text-indigo-500 bg-indigo-50/30 rounded-2xl text-xs font-bold"
-              >
-                + 让 AI 发布动态
-              </button>
+
+                    {/* 用户资料 (头像下方, 右对齐) */}
+                    <div className="px-8 pt-10 pb-4 text-right flex flex-col items-end">
+                      <span className="text-xl font-black text-zinc-900 leading-none">{userProfile.name}</span>
+                      <span className="text-[11px] font-black text-zinc-400 mt-1 uppercase tracking-tight">{userProfile.username}</span>
+                      <p className="text-[10px] text-zinc-300 mt-2 italic max-w-[70%]">{userProfile.signature}</p>
+                    </div>
+
+                    {/* 帖子列表 */}
+                    <div className="mt-4 px-6 divide-y divide-zinc-100">
+                      {posts.map(post => (
+                        <PostCard 
+                          key={post.id} 
+                          post={post} 
+                          userProfile={userProfile} 
+                          characters={characters}
+                          onLike={() => {
+                            setPosts(prev => prev.map(p => p.id === post.id ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p));
+                          }}
+                          onComment={(content) => {
+                            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            const newComment = { id: Date.now().toString(), username: userProfile.name, content, likes: 0, time };
+                            setPosts(prev => prev.map(p => p.id === post.id ? { ...p, comments: [...p.comments, newComment] } : p));
+                          }}
+                          onForward={() => {
+                            setPostToForward(post);
+                            setIsForwardModalOpen(true);
+                          }}
+                          onClick={() => setSelectedPostId(post.id)}
+                          onLongPress={() => setPostActionTarget({ type: 'post', id: post.id, content: post.content })}
+                        />
+                      ))}
+                    </div>
+
+                    <div className="p-10 text-center opacity-20 filter grayscale">
+                      <p className="text-[9px] font-black uppercase tracking-[0.5em]">--- End of Space ---</p>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <PostDetailView 
+                    post={posts.find(p => p.id === selectedPostId)}
+                    onBack={() => setSelectedPostId(null)}
+                    userProfile={userProfile}
+                    characters={characters}
+                    onLikePost={() => {
+                      setPosts(prev => prev.map(p => p.id === selectedPostId ? { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 } : p));
+                    }}
+                    onAddComment={(content, replyTo) => {
+                      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      const newComment = { id: Date.now().toString(), username: userProfile.name, content, likes: 0, replyTo, time };
+                      setPosts(prev => prev.map(p => p.id === selectedPostId ? { ...p, comments: [...p.comments, newComment] } : p));
+                    }}
+                    onLikeComment={(commentId) => {
+                      setPosts(prev => prev.map(p => p.id === selectedPostId ? {
+                        ...p,
+                        comments: p.comments.map(c => c.id === commentId ? { ...c, isLiked: !c.isLiked, likes: c.isLiked ? c.likes - 1 : c.likes + 1 } : c)
+                      } : p));
+                    }}
+                    onCommentLongPress={(id, content) => setPostActionTarget({ type: 'comment', id, parentId: selectedPostId!, content })}
+                  />
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>
@@ -929,6 +1066,97 @@ export default function App() {
           setState={setTransferState}
         />
 
+        <CreatePostModal 
+          isOpen={isCreatePostModalOpen}
+          onClose={() => setIsCreatePostModalOpen(false)}
+          onConfirm={(content: string, image: string, isTextImage: boolean, time: string) => {
+            const newPost: Post = {
+              id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+              content,
+              image,
+              isTextImage, // 设置文字图片标记
+              date: time,  // 使用 HH:mm 格式
+              type: 'user',
+              likes: 0,
+              isLiked: false,
+              comments: []
+            };
+            setPosts(prev => [newPost, ...prev]);
+          }}
+        />
+
+        <ForwardModal 
+          isOpen={isForwardModalOpen}
+          onClose={() => setIsForwardModalOpen(false)}
+          characters={characters}
+          post={postToForward}
+          onForward={(charId: string) => {
+            if (!postToForward) return;
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const forwardMsg: Message = {
+              id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+              charId,
+              role: 'user',
+              content: `[转发动态]\n${postToForward.content}${postToForward.image ? '\n(图片/文字视效)' : ''}`,
+              time,
+              type: 'text',
+              postForward: postToForward // 带上转发元数据
+            };
+            setMessages(prev => [...prev, forwardMsg]);
+            setIsForwardModalOpen(false);
+            setPostToForward(null);
+            alert('已转发到聊天窗口');
+          }}
+        />
+
+        {/* 帖子/评论管理弹窗 */}
+        {postActionTarget && (
+          <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
+            <div className="absolute inset-0" onClick={() => setPostActionTarget(null)} />
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 space-y-4 relative">
+              <h3 className="text-xs font-black uppercase tracking-widest text-center text-zinc-300">Management</h3>
+              <button 
+                onClick={() => {
+                  const newContent = prompt('修改内容:', postActionTarget.content);
+                  if (newContent) {
+                    if (postActionTarget.type === 'post') {
+                      setPosts(prev => prev.map(p => p.id === postActionTarget.id ? { ...p, content: newContent } : p));
+                    } else {
+                      setPosts(prev => prev.map(p => p.id === postActionTarget.parentId ? {
+                        ...p,
+                        comments: p.comments.map(c => c.id === postActionTarget.id ? { ...c, content: newContent } : c)
+                      } : p));
+                    }
+                  }
+                  setPostActionTarget(null);
+                }}
+                className="w-full py-4 bg-zinc-50 rounded-2xl font-bold flex items-center justify-center gap-2"
+              >
+                <Edit3 size={16} /> 编辑
+              </button>
+              <button 
+                onClick={() => {
+                  if (confirm('确定删除吗？')) {
+                    if (postActionTarget.type === 'post') {
+                      setPosts(prev => prev.filter(p => p.id !== postActionTarget.id));
+                      if (selectedPostId === postActionTarget.id) setSelectedPostId(null);
+                    } else {
+                      setPosts(prev => prev.map(p => p.id === postActionTarget.parentId ? {
+                        ...p,
+                        comments: p.comments.filter(c => c.id !== postActionTarget.id)
+                      } : p));
+                    }
+                  }
+                  setPostActionTarget(null);
+                }}
+                className="w-full py-4 bg-red-50 text-red-500 rounded-2xl font-bold flex items-center justify-center gap-2"
+              >
+                <Trash2 size={16} /> 删除
+              </button>
+            </motion.div>
+          </div>
+        )}
+
         {isSidebarOpen && (
           <>
             <motion.div 
@@ -959,12 +1187,10 @@ export default function App() {
                 </button>
                 <div className="space-y-1">
                   <h2 className="text-2xl font-bold tracking-tight text-zinc-900">{userProfile.name}</h2>
-                  <input 
-                    type="text" 
-                    value={userProfile.status}
-                    onChange={(e) => setUserProfile({ ...userProfile, status: e.target.value })}
-                    className="bg-transparent border-none p-0 text-zinc-400 text-xs font-mono uppercase tracking-widest focus:ring-0 w-full"
-                  />
+                  <div className="flex flex-col">
+                    <span className="text-zinc-400 text-[10px] font-mono uppercase tracking-widest leading-none mb-1">{userProfile.username}</span>
+                    <span className="text-zinc-300 text-[9px] italic truncate max-w-[200px]">{userProfile.signature}</span>
+                  </div>
                 </div>
 
                 {isProfileEditing && (
@@ -973,20 +1199,49 @@ export default function App() {
                     animate={{ height: 'auto', opacity: 1 }}
                     className="mt-6 p-4 bg-white border border-gray-100 rounded-3xl space-y-6 shadow-lg shadow-gray-100"
                   >
-                    <label className="block">
-                      <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">用户昵称</span>
-                      <input 
-                        type="text" 
-                        value={userProfile.name}
-                        onChange={(e) => setUserProfile({ ...userProfile, name: e.target.value })}
-                        className="w-full bg-zinc-50 border-none rounded-2xl p-4 text-sm focus:ring-1 focus:ring-zinc-200 mt-1" 
-                      />
-                    </label>
+                    <div className="space-y-4">
+                      <label className="block">
+                        <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">用户昵称</span>
+                        <input 
+                          type="text" 
+                          value={userProfile.name}
+                          onChange={(e) => setUserProfile({ ...userProfile, name: e.target.value })}
+                          className="w-full bg-zinc-50 border-none rounded-2xl p-4 text-sm focus:ring-1 focus:ring-zinc-200 mt-1" 
+                        />
+                      </label>
+                      
+                      <label className="block">
+                        <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">用户名 ID</span>
+                        <input 
+                          type="text" 
+                          value={userProfile.username}
+                          onChange={(e) => setUserProfile({ ...userProfile, username: e.target.value })}
+                          className="w-full bg-zinc-50 border-none rounded-2xl p-4 text-sm focus:ring-1 focus:ring-zinc-200 mt-1" 
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">个性签名</span>
+                        <input 
+                          type="text" 
+                          value={userProfile.signature}
+                          onChange={(e) => setUserProfile({ ...userProfile, signature: e.target.value })}
+                          className="w-full bg-zinc-50 border-none rounded-2xl p-4 text-sm focus:ring-1 focus:ring-zinc-200 mt-1" 
+                        />
+                      </label>
+                    </div>
                     
-                    <ImageUploader 
-                      label="更换头像" 
-                      onUpload={(url: string) => setUserProfile({ ...userProfile, avatar: url })} 
-                    />
+                    <div className="space-y-4">
+                      <ImageUploader 
+                        label="更换头像" 
+                        onUpload={(url: string) => setUserProfile({ ...userProfile, avatar: url })} 
+                      />
+                      
+                      <ImageUploader 
+                        label="更换空间背景" 
+                        onUpload={(url: string) => setUserProfile({ ...userProfile, background: url })} 
+                      />
+                    </div>
 
                     <button 
                       onClick={() => setIsProfileEditing(false)}
@@ -1660,6 +1915,335 @@ function TransferCard({ role, amount, remark, style, glassClass }: any) {
         <Check size={10} className="opacity-40" />
       </div>
     </div>
+  );
+}
+
+function PostCard({ post, userProfile, characters, onLike, onComment, onForward, onClick, onLongPress }: any) {
+  const [showComments, setShowComments] = useState(false);
+  const [commentInput, setCommentInput] = useState('');
+  
+  // 处理长按逻辑
+  const timerRef = React.useRef<any>(null);
+  const handleTouchStart = () => {
+    timerRef.current = setTimeout(onLongPress, 800);
+  };
+  const handleTouchEnd = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  };
+
+  return (
+    <div 
+      className="py-10 group animate-in fade-in slide-in-from-bottom-4 duration-500"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onMouseDown={handleTouchStart}
+      onMouseUp={handleTouchEnd}
+    >
+      <div className="flex items-start gap-4">
+        <div className={`w-12 h-12 rounded-2xl ${post.type === 'ai' ? 'bg-indigo-500' : 'bg-zinc-900'} flex-shrink-0 flex items-center justify-center text-white text-xs font-bold overflow-hidden shadow-lg shadow-zinc-100`}>
+          {post.type === 'ai' ? (
+            (characters[0]?.avatar ? <img src={characters[0].avatar} className="w-full h-full object-cover" /> : 'AI')
+          ) : (
+            (userProfile.avatar ? <img src={userProfile.avatar} className="w-full h-full object-cover" /> : 'ME')
+          )}
+        </div>
+        <div className="flex-1 space-y-4">
+          <div className="flex justify-between items-baseline" onClick={onClick}>
+            <span className="text-sm font-black text-zinc-900">
+              {post.type === 'ai' ? (characters[0]?.name || '智能助手') : userProfile.name}
+            </span>
+            <span className="text-[10px] text-zinc-300 font-mono italic">{post.date}</span>
+          </div>
+          
+          <div onClick={onClick}>
+            <p className="text-sm text-zinc-600 leading-relaxed whitespace-pre-wrap">{post.content}</p>
+          </div>
+          
+          {post.image && (
+            <div onClick={onClick} className="rounded-3xl overflow-hidden shadow-xl shadow-zinc-100/50 border border-zinc-50 relative group">
+              {post.isTextImage ? (
+                <div className="w-full h-48 bg-zinc-900 flex items-center justify-center p-8 text-center bg-gradient-to-br from-zinc-800 to-black">
+                  <span className="text-white font-black text-lg tracking-tighter drop-shadow-2xl opacity-80 leading-tight">
+                    {post.image}
+                  </span>
+                  <div className="absolute top-4 right-4 opacity-20"><Quote size={32} className="text-white" /></div>
+                </div>
+              ) : (
+                <img src={post.image} className="w-full max-h-96 object-cover" />
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center gap-6 pt-2">
+            <button 
+              onClick={onLike}
+              className={`flex items-center gap-1.5 transition-all active:scale-90 ${post.isLiked ? 'text-red-500' : 'text-zinc-300 hover:text-zinc-500'}`}
+            >
+              <Heart size={16} fill={post.isLiked ? 'currentColor' : 'none'} />
+              <span className="text-[10px] font-black">{post.likes || ''}</span>
+            </button>
+            <button 
+              onClick={() => {
+                if (onClick) onClick();
+                else setShowComments(!showComments);
+              }}
+              className="flex items-center gap-1.5 text-zinc-300 hover:text-zinc-500 transition-all active:scale-90"
+            >
+              <MessageCircle size={16} />
+              <span className="text-[10px] font-black">{post.comments?.length || ''}</span>
+            </button>
+            <button 
+              onClick={onForward}
+              className="flex items-center gap-1.5 text-zinc-300 hover:text-zinc-500 transition-all active:scale-90"
+            >
+              <Share2 size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PostDetailView({ post, onBack, userProfile, characters, onLikePost, onAddComment, onLikeComment, onCommentLongPress }: any) {
+  const [commentText, setCommentText] = useState('');
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+
+  if (!post) return null;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      className="flex flex-col h-full bg-white"
+    >
+      <div className="sticky top-0 z-20 flex items-center justify-between px-6 py-4 bg-white/80 backdrop-blur-md border-b border-zinc-50">
+        <button onClick={onBack} className="p-2 -ml-2 text-zinc-400 hover:text-zinc-900 transition-colors">
+          <ArrowLeft size={20} />
+        </button>
+        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-300 pr-8">Discovery Detail</span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-6 pb-20 custom-scrollbar">
+        <PostCard 
+          post={post} 
+          userProfile={userProfile} 
+          characters={characters} 
+          onLike={onLikePost}
+          onForward={() => alert('详情页转发暂未开放')}
+        />
+
+        <div className="mt-4 pb-4 border-b border-zinc-50">
+          <span className="text-[10px] font-black uppercase text-zinc-300 tracking-widest">Comments ({post.comments.length})</span>
+        </div>
+
+        <div className="space-y-6 mt-6">
+          {post.comments.map((comment: any) => (
+            <div 
+              key={comment.id} 
+              className="flex gap-3 animate-in fade-in"
+              onContextMenu={(e) => { e.preventDefault(); onCommentLongPress(comment.id, comment.content); }}
+              onTouchStart={() => { 
+                const timer = setTimeout(() => onCommentLongPress(comment.id, comment.content), 800);
+                (window as any).commentTimer = timer;
+              }}
+              onTouchEnd={() => { 
+                clearTimeout((window as any).commentTimer); 
+              }}
+            >
+              <div className="w-8 h-8 rounded-xl bg-zinc-100 flex items-center justify-center flex-shrink-0 text-[10px] font-black">
+                {comment.username[0]}
+              </div>
+              <div className="flex-1 space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="text-[11px] font-black text-zinc-900">{comment.username}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[9px] text-zinc-300 font-mono italic">{comment.time}</span>
+                    <button 
+                      onClick={() => onLikeComment(comment.id)}
+                      className={`flex items-center gap-1 transition-all ${comment.isLiked ? 'text-red-500' : 'text-zinc-300'}`}
+                    >
+                      <Heart size={10} fill={comment.isLiked ? 'currentColor' : 'none'} />
+                      <span className="text-[8px] font-bold">{comment.likes || ''}</span>
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-zinc-500 leading-relaxed">
+                  {comment.replyTo && <span className="text-zinc-300 mr-1 italic font-medium">@{comment.replyTo}</span>}
+                  {comment.content}
+                </p>
+                <button 
+                  onClick={() => {
+                    setReplyTo(comment.username);
+                    const el = document.getElementById('detail-comment-input');
+                    el?.focus();
+                  }}
+                  className="text-[9px] font-black text-zinc-300 uppercase tracking-widest mt-1 hover:text-zinc-900"
+                >
+                  Reply
+                </button>
+              </div>
+            </div>
+          ))}
+          {post.comments.length === 0 && (
+            <div className="text-center py-10 text-[9px] font-black text-zinc-200 uppercase tracking-widest">No comments exploration yet</div>
+          )}
+        </div>
+      </div>
+
+      <div className="p-6 bg-white border-t border-zinc-50">
+        <div className="flex flex-col gap-2">
+          {replyTo && (
+            <div className="flex items-center justify-between px-3 py-1 bg-zinc-50 rounded-lg">
+              <span className="text-[9px] font-bold text-zinc-400">回复 @{replyTo}</span>
+              <button onClick={() => setReplyTo(null)} className="text-zinc-400"><X size={12} /></button>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input 
+              id="detail-comment-input"
+              className="flex-1 bg-zinc-50 border-none rounded-2xl px-5 py-4 text-xs focus:ring-1 focus:ring-zinc-900 placeholder:text-zinc-200" 
+              placeholder="添加独到见解..." 
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && commentText.trim()) {
+                  onAddComment(commentText, replyTo || undefined);
+                  setCommentText('');
+                  setReplyTo(null);
+                }
+              }}
+            />
+            <button 
+              onClick={() => {
+                if (commentText.trim()) {
+                  onAddComment(commentText, replyTo || undefined);
+                  setCommentText('');
+                  setReplyTo(null);
+                }
+              }}
+              className="bg-zinc-900 text-white p-4 rounded-2xl active:scale-95 transition-all shadow-lg shadow-zinc-200"
+            >
+              <Send size={18} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function CreatePostModal({ isOpen, onClose, onConfirm }: any) {
+  const [content, setContent] = useState('');
+  const [image, setImage] = useState('');
+  const [useTextImage, setUseTextImage] = useState(false);
+
+  if (!isOpen) return null;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }} 
+      animate={{ opacity: 1 }} 
+      exit={{ opacity: 0 }} 
+      className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm"
+    >
+      <div className="absolute inset-0" onClick={onClose} />
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }} 
+        animate={{ scale: 1, y: 0 }} 
+        className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl relative p-8 flex flex-col gap-6"
+      >
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-black tracking-tighter uppercase">New Discovery</h3>
+          <button onClick={onClose} className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        <textarea 
+          placeholder="分享你的瞬间..." 
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          className="w-full h-32 bg-zinc-50 border-none rounded-2xl p-4 text-sm focus:ring-1 focus:ring-zinc-900 resize-none"
+        />
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-2">
+            <div className="flex items-center gap-2">
+              <ImageIcon size={14} className="text-zinc-400" />
+              <span className="text-[10px] font-bold text-zinc-300 uppercase">
+                {useTextImage ? '文字描述 (Text Image)' : '图片展示 (Image URL)'}
+              </span>
+            </div>
+            <button 
+              onClick={() => setUseTextImage(!useTextImage)}
+              className="text-[9px] font-black text-zinc-400 underline decoration-dashed transition-all hover:text-zinc-900"
+            >
+              {useTextImage ? '切换 URL' : '切换文字构图'}
+            </button>
+          </div>
+          <input 
+            type="text" 
+            placeholder={useTextImage ? "输入需要排版的文字内容..." : "粘贴图片链接..."}
+            value={image}
+            onChange={(e) => setImage(e.target.value)}
+            className="w-full bg-zinc-50 border-none rounded-xl p-4 text-xs focus:ring-1 focus:ring-zinc-900" 
+          />
+        </div>
+
+        <button 
+          onClick={() => {
+            if (content.trim()) {
+              const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              onConfirm(content, image, useTextImage, time);
+              setContent('');
+              setImage('');
+              onClose();
+            }
+          }}
+          className="w-full bg-zinc-900 text-white font-black uppercase tracking-widest py-5 rounded-2xl active:scale-95 transition-all shadow-xl shadow-zinc-200"
+        >
+          Publish Moment
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function ForwardModal({ isOpen, onClose, characters, post, onForward }: any) {
+  if (!isOpen || !post) return null;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }} 
+      animate={{ opacity: 1 }} 
+      exit={{ opacity: 0 }} 
+      className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm"
+    >
+      <div className="absolute inset-0" onClick={onClose} />
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }} 
+        animate={{ scale: 1, y: 0 }} 
+        className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl relative p-8 space-y-6"
+      >
+        <h3 className="text-lg font-black tracking-tighter uppercase text-center">Forward Discovery</h3>
+        <div className="max-h-64 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+          {characters.map((char: any) => (
+            <button 
+              key={char.id}
+              onClick={() => onForward(char.id)}
+              className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 rounded-2xl transition-all active:scale-95"
+            >
+              <div className="w-10 h-10 rounded-xl bg-zinc-900 overflow-hidden shrink-0">
+                {char.avatar ? <img src={char.avatar} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-white text-xs">{char.name[0]}</div>}
+              </div>
+              <span className="text-sm font-black text-zinc-900">{char.name}</span>
+            </button>
+          ))}
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
