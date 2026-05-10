@@ -375,6 +375,20 @@ export default function App() {
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, msgId: string } | null>(null);
+  const menuTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 消息菜单自动消失逻辑
+  useEffect(() => {
+    if (contextMenu) {
+      if (menuTimerRef.current) clearTimeout(menuTimerRef.current);
+      menuTimerRef.current = setTimeout(() => {
+        setContextMenu(null);
+      }, 4000);
+    }
+    return () => {
+      if (menuTimerRef.current) clearTimeout(menuTimerRef.current);
+    };
+  }, [contextMenu]);
 
   const [beautyPresets, setBeautyPresets] = useState<BeautyPreset[]>(() => 
     getSafeStorage('beauty_presets', [{ id: 'default', name: '默认黑白', css: '' }])
@@ -554,42 +568,51 @@ export default function App() {
   };
 
   const handleSendMessage = async (triggerAi: boolean = false) => {
-    if (!inputMessage.trim() || !selectedChat || isTyping) return;
-    const content = inputMessage;
+    if (!selectedChat || isTyping) return;
+    
+    // 如果没有输入且不触发 AI，则直接返回
+    if (!inputMessage.trim() && !triggerAi) return;
+
+    const content = inputMessage.trim();
     const msgType = isVoiceMode ? 'voice' : 'text';
     
-    // 如果是编辑模式
-    if (editingMessageId) {
-      setMessages(prev => prev.map(m => m.id === editingMessageId ? { ...m, content, isEdited: true } : m));
-      setEditingMessageId(null);
+    // 如果有输入，先发送消息
+    if (content) {
+      if (editingMessageId) {
+        setMessages(prev => prev.map(m => m.id === editingMessageId ? { ...m, content, isEdited: true } : m));
+        setEditingMessageId(null);
+        setInputMessage('');
+        return;
+      }
+
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const newUserMsg: Message = { 
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, 
+        charId: selectedChat.id,
+        role: 'user', 
+        content: quotedMessage ? `> ${quotedMessage.content}\n\n${content}` : content, 
+        time,
+        type: msgType
+      };
+      
+      setMessages(prev => [...prev, newUserMsg]);
       setInputMessage('');
-      return;
+      setQuotedMessage(null);
+      setIsVoiceMode(false);
     }
-
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const newUserMsg: Message = { 
-      id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, 
-      charId: selectedChat.id,
-      role: 'user', 
-      content: quotedMessage ? `> ${quotedMessage.content}\n\n${content}` : content, 
-      time,
-      type: msgType
-    };
-    
-    // 立即更新当前视图的消息
-    setMessages(prev => [...prev, newUserMsg]);
-    const currentChatHistory = [...chatMessages, newUserMsg];
-
-    setInputMessage('');
-    setQuotedMessage(null);
-    setIsVoiceMode(false);
 
     if (!triggerAi) return;
 
     setIsTyping(true);
-
     const activeWorldBook = worldBooks.find(wb => wb.isActive);
     const systemPrompt = `你是 ${selectedChat.name}。${selectedChat.notes || ''}${activeWorldBook ? `\n\n【世界背景/世界书】\n${activeWorldBook.content}` : ''}`;
+    
+    const currentChatHistory = messages.filter(m => m.charId === selectedChat.id);
+    // 如果刚才发了新消息，还没进 state，这里需要补丁。不过 setMessages 是异步的，
+    // 这里我们可以手动构造最新历史。
+    const latestHistory = content 
+      ? [...currentChatHistory, { role: 'user', content } as Message]
+      : currentChatHistory;
 
     try {
       const resp = await fetch(`${apiSettings.baseUrl}/chat/completions`, {
@@ -599,7 +622,7 @@ export default function App() {
           model: apiSettings.model, 
           messages: [
             { role: 'system', content: systemPrompt },
-            ...currentChatHistory.slice(-10).map(m => ({ role: m.role, content: m.content }))
+            ...latestHistory.slice(-10).map(m => ({ role: m.role, content: m.content }))
           ], 
           temperature: 0.7 
         })
@@ -815,7 +838,7 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex flex-col pb-20 overflow-y-auto h-full bg-white"
+              className="flex flex-col pb-20 bg-white"
             >
               {/* 背景区域 */}
               <div className="relative h-[33vh] w-full bg-zinc-100 group">
@@ -1002,8 +1025,8 @@ export default function App() {
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className="fixed inset-0 bg-white z-[60] flex flex-col pt-[env(safe-area-inset-top)]"
             >
-              {/* 聊天顶部 - 固定在最上方 */}
-              <div className="flex items-center justify-between px-6 py-2 border-b border-gray-100 bg-white/95 backdrop-blur-md h-16 shrink-0 sticky top-0 z-[70]">
+              {/* 聊天顶栏 - 修改为 fixed 以防止被键盘推走 */}
+              <div className="fixed top-0 left-0 right-0 h-16 flex items-center justify-between px-6 bg-white/95 backdrop-blur-md border-b border-gray-100 z-[100]">
                 <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400">
                   <ArrowLeft size={20} />
                 </button>
@@ -1019,19 +1042,19 @@ export default function App() {
                 </button>
               </div>
 
-            <ChatSettingsModal 
-              char={selectedChat} 
-              settings={chatSettings} 
-              setChatSettings={setChatSettings} 
-              isOpen={isChatSettingsOpen} 
-              onClose={() => setIsChatSettingsOpen(false)}
-              ImageUploader={ImageUploader}
-              setCharacters={setCharacters}
-            />
+              <ChatSettingsModal 
+                char={selectedChat} 
+                settings={chatSettings} 
+                setChatSettings={setChatSettings} 
+                isOpen={isChatSettingsOpen} 
+                onClose={() => setIsChatSettingsOpen(false)}
+                ImageUploader={ImageUploader}
+                setCharacters={setCharacters}
+              />
 
-            {/* 消息区域 (应用背景图) */}
-            <div 
-              className="flex-1 overflow-y-auto px-3 py-6 space-y-6 bg-zinc-50/50 relative"
+              {/* 消息区域 (增加顶距以免被 fixed 顶栏遮挡) */}
+              <div 
+                className="flex-1 overflow-y-auto px-3 pb-6 pt-20 space-y-6 bg-zinc-50/50 relative"
               style={chatSettings[selectedChat.id]?.background ? { backgroundImage: `url(${chatSettings[selectedChat.id]?.background})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
               onClick={() => {
                 setContextMenu(null);
@@ -1045,7 +1068,7 @@ export default function App() {
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
-                    className="fixed z-[100] bg-zinc-900 text-white rounded-2xl py-2 w-32 border border-zinc-800"
+                    className="fixed z-[120] bg-zinc-100 text-zinc-900 rounded-2xl py-2 w-32 border border-zinc-200"
                     style={{ left: contextMenu.x, top: Math.min(contextMenu.y, window.innerHeight - 200) }}
                   >
                     <ContextItem label="撤回" onClick={() => {
@@ -1070,8 +1093,8 @@ export default function App() {
                       if (msg) setQuotedMessage(msg);
                       setContextMenu(null);
                     }} />
-                    <div className="border-t border-zinc-800 my-1" />
-                    <ContextItem label="删除" color="text-red-400" onClick={() => {
+                    <div className="border-t border-zinc-200 my-1" />
+                    <ContextItem label="删除" color="text-red-500" onClick={() => {
                       setMessages(messages.filter(m => m.id !== contextMenu.msgId));
                       setContextMenu(null);
                     }} />
@@ -1288,7 +1311,7 @@ export default function App() {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         if (inputMessage.trim()) {
-                          handleSendMessage(false);
+                          handleSendMessage(false); // 回车仅发送不触发回复
                           setInputMessage('');
                         }
                       }
@@ -1460,7 +1483,7 @@ export default function App() {
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-              className="fixed top-0 left-0 bottom-0 w-[85%] max-w-sm bg-white z-50 flex flex-col shadow-2xl rounded-r-[3rem] overflow-hidden"
+              className="fixed top-0 left-0 bottom-0 w-[85%] max-w-sm bg-white z-50 flex flex-col rounded-r-[3rem] overflow-hidden"
             >
               {/* 侧边栏头部 - 个人资料区域 */}
               <div className="p-10 pb-6 pt-20 bg-zinc-50/50">
@@ -1647,7 +1670,7 @@ export default function App() {
 
                     {sidebarView === 'popup' && (
                       <div className="space-y-8 p-2">
-                        <div className="p-8 bg-zinc-900 rounded-[2.5rem] text-white space-y-6 shadow-2xl relative overflow-hidden">
+                        <div className="p-8 bg-zinc-900 rounded-[2.5rem] text-white space-y-6 relative overflow-hidden">
                           <div className="relative z-10">
                             <h3 className="text-xl font-black italic tracking-tighter mb-2">SYSTEM POPUP</h3>
                             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest leading-relaxed">
@@ -2634,7 +2657,7 @@ function PostDetailView({ post, onBack, userProfile, characters, onLikePost, onA
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 p-6 bg-white/90 backdrop-blur-xl border-t border-zinc-50 shadow-[0_-10px_30px_rgba(0,0,0,0.02)] z-30">
+      <div className="fixed bottom-0 left-0 right-0 p-6 bg-white/90 backdrop-blur-xl border-t border-zinc-50 z-30">
 
         <div className="flex flex-col gap-2">
           {replyTo && (
@@ -2666,7 +2689,7 @@ function PostDetailView({ post, onBack, userProfile, characters, onLikePost, onA
                   setReplyTo(null);
                 }
               }}
-              className="bg-zinc-900 text-white p-4 rounded-2xl active:scale-95 transition-all shadow-lg shadow-zinc-200"
+              className="bg-zinc-900 text-white p-4 rounded-2xl active:scale-95 transition-all"
             >
               <Send size={18} />
             </button>
@@ -2792,9 +2815,9 @@ function ForwardModal({ isOpen, onClose, characters, post, onForward }: any) {
 
 // --- 基础组件 ---
 
-function ContextItem({ label, onClick, color = 'text-white' }: { label: string, onClick: () => void, color?: string }) {
+function ContextItem({ label, onClick, color = 'text-zinc-900' }: { label: string, onClick: () => void, color?: string }) {
   return (
-    <button onClick={onClick} className={`w-full px-4 py-2 text-left text-xs font-bold hover:bg-zinc-800 transition-colors ${color}`}>
+    <button onClick={onClick} className={`w-full px-4 py-2 text-left text-xs font-bold hover:bg-zinc-200 transition-colors ${color}`}>
       {label}
     </button>
   );
