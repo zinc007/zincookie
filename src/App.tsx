@@ -379,13 +379,14 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   // 自动滚动到底部
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (instant = false) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: instant ? 'auto' : 'smooth' });
   };
 
   useEffect(() => {
     if (selectedChat) {
-      scrollToBottom();
+      // 首次进入聊天或收到消息时立即跳转
+      scrollToBottom(true);
     }
   }, [selectedChat, messages]);
 
@@ -615,13 +616,16 @@ export default function App() {
     }
 
     if (!triggerAi) return;
+    
+    // 获取最新的角色数据（以防在联系人界面修改了设定）
+    const latestChar = characters.find(c => c.id === selectedChat.id) || selectedChat;
 
     // 检查 API 配置
     if (!apiSettings.baseUrl || !apiSettings.apiKey) {
       const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const errorMsg: Message = {
         id: `error-${Date.now()}`,
-        charId: selectedChat.id,
+        charId: latestChar.id,
         role: 'assistant',
         content: "请先配置api",
         time,
@@ -633,10 +637,11 @@ export default function App() {
 
     setIsTyping(true);
     const activeWorldBook = worldBooks.find(wb => wb.isActive);
-    const systemPrompt = `你是 ${selectedChat.name}。${selectedChat.notes || ''}${activeWorldBook ? `\n\n【世界背景/世界书】\n${activeWorldBook.content}` : ''}`;
+    // 角色设定取 char.notes
+    const systemPrompt = `你是 ${latestChar.name}。${latestChar.notes || ''}${activeWorldBook ? `\n\n【世界背景/世界书】\n${activeWorldBook.content}` : ''}`;
     
     // 获取当前聊天历史
-    const currentChatHistory = messages.filter(m => m.charId === selectedChat.id);
+    const currentChatHistory = messages.filter(m => m.charId === latestChar.id);
     
     // 如果立刻刚才发了消息，消息还没进 messages state (异步)，所以这里我们要手动补齐历史
     const latestHistory = content 
@@ -1054,8 +1059,8 @@ export default function App() {
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className="fixed inset-0 bg-white z-[60] flex flex-col pt-[env(safe-area-inset-top)]"
             >
-              {/* 聊天顶栏 - 使用 sticky 以更好地适应虚拟键盘 */}
-              <div className="sticky top-0 h-16 flex items-center justify-between px-6 bg-white/95 backdrop-blur-md border-b border-gray-100 z-[100] shrink-0">
+              {/* 聊天顶栏 - 使用 fixed 并置于最高层级，适配 iOS 安全区域 */}
+              <div className="fixed top-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-md border-b border-gray-100 z-[110] flex items-center justify-between px-6 pt-[env(safe-area-inset-top)]">
                 <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400">
                   <ArrowLeft size={20} />
                 </button>
@@ -1081,10 +1086,15 @@ export default function App() {
                 setCharacters={setCharacters}
               />
 
-              {/* 消息区域 (增加顶距以免被 sticky 顶栏遮挡) */}
+              {/* 消息区域 - 动态计算顶部内边距以适配 fixed 顶栏和安全区域 */}
               <div 
-                className="flex-1 overflow-y-auto px-3 pb-6 space-y-6 bg-zinc-50/50 relative"
-              style={chatSettings[selectedChat.id]?.background ? { backgroundImage: `url(${chatSettings[selectedChat.id]?.background})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
+                className="flex-1 overflow-y-auto px-3 pb-10 space-y-6 bg-zinc-50/50 relative"
+                style={{
+                  paddingTop: `calc(4rem + env(safe-area-inset-top))`,
+                  backgroundImage: chatSettings[selectedChat.id]?.background ? `url(${chatSettings[selectedChat.id]?.background})` : undefined,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center'
+                }}
               onClick={() => {
                 setContextMenu(null);
                 if (!isMultiSelectMode) setSelectedMessageIds([]);
@@ -1168,8 +1178,20 @@ export default function App() {
                     onPointerDown={(e) => {
                       const timer = setTimeout(() => {
                         setContextMenu({ x: e.clientX, y: e.clientY, msgId: msg.id });
-                      }, 600);
-                      e.currentTarget.addEventListener('pointerup', () => clearTimeout(timer), { once: true });
+                      }, 3000);
+                      
+                      const cancel = () => {
+                        clearTimeout(timer);
+                        window.removeEventListener('pointerup', cancel);
+                        window.removeEventListener('pointermove', cancel);
+                      };
+                      
+                      window.addEventListener('pointerup', cancel, { once: true });
+                      window.addEventListener('pointermove', (ev) => {
+                        // 如果移动距离超过阈值，取消长按
+                        const dist = Math.sqrt(Math.pow(ev.clientX - e.clientX, 2) + Math.pow(ev.clientY - e.clientY, 2));
+                        if (dist > 10) cancel();
+                      });
                     }}
                   >
                     {isMultiSelectMode && (
@@ -2102,11 +2124,14 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
 
   useEffect(() => {
     if (isOpen) {
-      setLocalSettings(settings[char.id] || {
+      const currentSettings = settings[char.id] || {};
+      setLocalSettings({
         avatarSize: 36,
         bubblePadding: 16,
         bubbleWidth: 75,
-        fontSize: 14
+        fontSize: 14,
+        ...currentSettings,
+        prompt: char.notes // 将 Character 的 notes 同步到 prompt 以便编辑
       });
     }
   }, [isOpen, char, settings]);
@@ -2115,10 +2140,16 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
 
   const handleSave = () => {
     try {
+      // 保存聊天窗口美化设定
       setChatSettings((prev: any) => ({ ...prev, [char.id]: localSettings }));
-      if (localSettings.charAvatar) {
-        setCharacters((prev: Character[]) => prev.map(c => c.id === char.id ? { ...c, avatar: localSettings.charAvatar } : c));
-      }
+      
+      // 同步更新 Character 列表中的 avatar 和 notes (角色设定)
+      setCharacters((prev: Character[]) => prev.map(c => 
+        c.id === char.id 
+          ? { ...c, avatar: localSettings.charAvatar || c.avatar, notes: localSettings.prompt || c.notes } 
+          : c
+      ));
+      
       onClose();
     } catch (e) {
       alert('保存失败：存储空间不足。');
@@ -2214,58 +2245,6 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <span className="text-[10px] font-black text-zinc-300 uppercase tracking-widest pl-1">自定义 CSS 美化</span>
-                <textarea 
-                  placeholder=".bubble { backdrop-filter: blur(10px); }" 
-                  value={localSettings.customCss || ''} 
-                  onChange={e => setLocalSettings({...localSettings, customCss: e.target.value})} 
-                  className="w-full h-32 bg-zinc-50 rounded-2xl p-4 text-[10px] font-mono border-none focus:ring-1 focus:ring-zinc-900" 
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 聊天功能 */}
-        <div className="border border-zinc-100 rounded-[2rem] overflow-hidden bg-white">
-          <button 
-            onClick={() => toggleSection('functions')}
-            className="w-full px-6 py-5 flex items-center justify-between hover:bg-zinc-50 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <Zap size={18} className="text-zinc-400" />
-              <span className="text-sm font-black uppercase tracking-wider">聊天功能</span>
-            </div>
-            {expandedSections.includes('functions') ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </button>
-          
-          {expandedSections.includes('functions') && (
-            <div className="px-6 pb-12 space-y-8 pt-4 animate-in slide-in-from-top-4">
-              <div className="space-y-4">
-                <span className="text-[10px] font-black text-zinc-800 uppercase tracking-widest pl-1">角色单次回复对话条数</span>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <span className="text-[9px] text-zinc-400 font-bold ml-1">最少 (Min)</span>
-                    <input 
-                      type="number" 
-                      value={localSettings.minResponses || 1} 
-                      onChange={e => setLocalSettings({...localSettings, minResponses: parseInt(e.target.value) || 1})}
-                      className="w-full bg-zinc-50 border-none rounded-xl p-3 text-xs font-bold focus:ring-1 focus:ring-zinc-900" 
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-[9px] text-zinc-400 font-bold ml-1">最多 (Max)</span>
-                    <input 
-                      type="number" 
-                      value={localSettings.maxResponses || 1} 
-                      onChange={e => setLocalSettings({...localSettings, maxResponses: parseInt(e.target.value) || 1})}
-                      className="w-full bg-zinc-50 border-none rounded-xl p-3 text-xs font-bold focus:ring-1 focus:ring-zinc-900" 
-                    />
-                  </div>
-                </div>
-              </div>
-
               <div className="space-y-4">
                 <div className="flex justify-between items-center px-1">
                   <span className="text-[10px] font-black text-zinc-800 uppercase tracking-widest">角色主动消息 (间隔/min)</span>
@@ -2295,7 +2274,6 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
           )}
         </div>
       </div>
-
 
       <div className="p-8 border-t border-zinc-50 bg-white sticky bottom-0">
         <button 
@@ -2327,7 +2305,6 @@ function AddCharacterModal({ isOpen, onClose, onSave, ImageUploader }: any) {
     avatar: '',
     gender: '保密',
     birthday: '',
-    personality: '',
     notes: ''
   });
 
@@ -2366,10 +2343,10 @@ function AddCharacterModal({ isOpen, onClose, onSave, ImageUploader }: any) {
                 <input type="date" value={formData.birthday} onChange={e => setFormData({...formData, birthday: e.target.value})} className="w-full bg-zinc-50 border-none rounded-2xl p-4 text-sm mt-1" />
               </label>
             </div>
-
+ 
             <label className="block">
-              <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">人设摘要</span>
-              <textarea value={formData.personality} onChange={e => setFormData({...formData, personality: e.target.value})} className="w-full bg-zinc-50 border-none rounded-2xl p-4 text-sm mt-1 h-20" />
+              <span className="text-[10px] font-bold text-zinc-300 uppercase pl-1">角色设定 (Notes/Prompt)</span>
+              <textarea value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="w-full bg-zinc-50 border-none rounded-2xl p-4 text-sm mt-1 h-28" placeholder="在此输入角色的性格、语言风格、背景故事等设定..." />
             </label>
           </div>
         </div>
@@ -2387,7 +2364,6 @@ function AddCharacterModal({ isOpen, onClose, onSave, ImageUploader }: any) {
     </motion.div>
   );
 }
-
 function VoiceBubble({ role, duration, style, glassClass, transcribedText, avatar }: any) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [showTranscription, setShowTranscription] = useState(false);
