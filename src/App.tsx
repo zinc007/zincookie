@@ -696,9 +696,17 @@ export default function App() {
 
     setIsTyping(true);
     const activeWorldBook = worldBooks.find(wb => wb.isActive);
+    const cs = chatSettings[latestChar.id] || {};
+    let countRequire = '';
+    if (cs.minResponses || cs.maxResponses) {
+        if (cs.minResponses && cs.maxResponses) countRequire = ` 请把你的回复强制切分为 ${cs.minResponses} 到 ${cs.maxResponses} 句话/段落发送。`;
+        else if (cs.minResponses) countRequire = ` 请把你的回复至少切分出 ${cs.minResponses} 句话/段落发送。`;
+        else if (cs.maxResponses) countRequire = ` 请把你的回复最多切分出 ${cs.maxResponses} 句话/段落发送。`;
+    }
+
     // 角色设定取 char.notes
     const systemPrompt = `你是 ${latestChar.name}。${latestChar.notes || ''}${activeWorldBook ? `\n\n【世界背景/世界书】\n${activeWorldBook.content}` : ''}
-【系统提示】你可以根据语意使用 "|||" 分隔符来实现分句发送，从而形成多个气泡。例如："今天天气真好|||太阳很明媚|||风也不大"。请根据语意自然分句或分段使用这个功能，不要输出多余解释。`;
+【系统提示】你可以根据语意使用 "|||" 分隔符来实现分句发送，从而形成多个气泡。例如："今天天气真好|||太阳很明媚|||风也不大"。${countRequire}请直接输出正文，并根据限制要求用 "|||" 分割，不要输出多余解释。`;
     
     // 获取当前聊天历史
     const currentChatHistory = messages.filter(m => m.charId === latestChar.id);
@@ -809,7 +817,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-white text-black font-sans overflow-hidden">
+    <div className="fixed inset-0 flex flex-col bg-white text-black font-sans overflow-hidden">
       {/* 全局注入背景 (针对某些预设) */}
       <div className="fixed inset-0 pointer-events-none z-[-1] bg-white transition-colors duration-500" />
 
@@ -2385,8 +2393,9 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
                     <span className="text-[9px] text-zinc-400 font-bold ml-1">最少 (Min)</span>
                     <input 
                       type="number" 
-                      value={localSettings.minResponses || 1} 
-                      onChange={e => setLocalSettings({...localSettings, minResponses: parseInt(e.target.value) || 1})}
+                      placeholder="留空"
+                      value={localSettings.minResponses || ''} 
+                      onChange={e => setLocalSettings({...localSettings, minResponses: e.target.value ? parseInt(e.target.value) : undefined})}
                       className="w-full bg-zinc-50 border-none rounded-xl p-3 text-xs font-bold focus:ring-1 focus:ring-zinc-900" 
                     />
                   </div>
@@ -2394,8 +2403,9 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
                     <span className="text-[9px] text-zinc-400 font-bold ml-1">最多 (Max)</span>
                     <input 
                       type="number" 
-                      value={localSettings.maxResponses || 1} 
-                      onChange={e => setLocalSettings({...localSettings, maxResponses: parseInt(e.target.value) || 1})}
+                      placeholder="留空"
+                      value={localSettings.maxResponses || ''} 
+                      onChange={e => setLocalSettings({...localSettings, maxResponses: e.target.value ? parseInt(e.target.value) : undefined})}
                       className="w-full bg-zinc-50 border-none rounded-xl p-3 text-xs font-bold focus:ring-1 focus:ring-zinc-900" 
                     />
                   </div>
