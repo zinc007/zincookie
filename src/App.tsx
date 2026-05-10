@@ -41,7 +41,8 @@ import {
   Edit,
   ChevronDown,
   Zap,
-  Sparkles
+  Sparkles,
+  RotateCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -135,6 +136,13 @@ interface UserProfile {
   status: string;
 }
 
+interface WorldBookPreset {
+  id: string;
+  name: string;
+  content: string;
+  isActive: boolean;
+}
+
 interface ChatSettings {
   [chatId: string]: {
     charAvatar?: string;
@@ -181,7 +189,7 @@ export default function App() {
   const [isProfileEditing, setIsProfileEditing] = useState(false);
   
   // 侧边栏子菜单状态
-  const [sidebarView, setSidebarView] = useState<'main' | 'settings' | 'beauty' | 'calendar' | 'popup' | 'schedule'>('main');
+  const [sidebarView, setSidebarView] = useState<'main' | 'settings' | 'beauty' | 'calendar' | 'popup' | 'schedule' | 'worldbook'>('main');
 
   // 辅助函数：安全地从 localStorage 解析 JSON
   const getSafeStorage = (key: string, defaultValue: any) => {
@@ -204,6 +212,13 @@ export default function App() {
       avatar: '',
       background: '' 
     })
+  );
+
+  // 世界书状态
+  const [worldBooks, setWorldBooks] = useState<WorldBookPreset[]>(() => 
+    getSafeStorage('app_world_books', [
+      { id: '1', name: '全域背景', content: '这是一个充满奇幻与科技交织的世界...', isActive: false }
+    ])
   );
 
   // 核心数据状态 (带本地持久化)
@@ -375,6 +390,42 @@ export default function App() {
   const [isStickerPickerOpen, setIsStickerPickerOpen] = useState(false);
   const [isPopupEnabled, setIsPopupEnabled] = useState(() => localStorage.getItem('popup_enabled') === 'true');
 
+  // --- 下拉刷新模拟状态 ---
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const startY = useRef(0);
+  const isAtTop = useRef(true);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const scrollEl = e.currentTarget as HTMLElement;
+    isAtTop.current = scrollEl.scrollTop === 0;
+    if (isAtTop.current) {
+      startY.current = e.touches[0].clientY;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (isAtTop.current && startY.current > 0) {
+      const delta = e.touches[0].clientY - startY.current;
+      if (delta > 0) {
+        setPullDistance(Math.min(delta * 0.5, 80));
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (pullDistance > 60) {
+      setIsRefreshing(true);
+      setTimeout(() => {
+        setIsRefreshing(false);
+        setPullDistance(0);
+      }, 1500);
+    } else {
+      setPullDistance(0);
+    }
+    startY.current = 0;
+  };
+
   // 课表/日历辅助逻辑
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -395,6 +446,7 @@ export default function App() {
       localStorage.setItem('todo_colors', JSON.stringify(todoColors));
       localStorage.setItem('api_presets', JSON.stringify(apiPresets));
       localStorage.setItem('app_available_models', JSON.stringify(availableModels));
+      localStorage.setItem('app_world_books', JSON.stringify(worldBooks));
       localStorage.setItem('last_active_tab', activeTab);
       localStorage.setItem('popup_enabled', isPopupEnabled ? 'true' : 'false');
       if (selectedPostId) localStorage.setItem('selected_post_id', selectedPostId);
@@ -536,6 +588,9 @@ export default function App() {
 
     setIsTyping(true);
 
+    const activeWorldBook = worldBooks.find(wb => wb.isActive);
+    const systemPrompt = `你是 ${selectedChat.name}。${selectedChat.notes || ''}${activeWorldBook ? `\n\n【世界背景/世界书】\n${activeWorldBook.content}` : ''}`;
+
     try {
       const resp = await fetch(`${apiSettings.baseUrl}/chat/completions`, {
         method: 'POST',
@@ -543,7 +598,7 @@ export default function App() {
         body: JSON.stringify({ 
           model: apiSettings.model, 
           messages: [
-            { role: 'system', content: `你是 ${selectedChat.name}。${selectedChat.notes || ''}` },
+            { role: 'system', content: systemPrompt },
             ...currentChatHistory.slice(-10).map(m => ({ role: m.role, content: m.content }))
           ], 
           temperature: 0.7 
@@ -551,13 +606,53 @@ export default function App() {
       });
       const data = await resp.json();
       if (data.choices?.[0]?.message?.content) {
-        setMessages(prev => [...prev, { 
-          id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, 
-          charId: selectedChat.id,
-          role: 'assistant', 
-          content: data.choices[0].message.content,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }]);
+        const fullContent = data.choices[0].message.content;
+        
+        // 解析多气泡格式: **内容1****内容2**
+        const bubbleMatches = fullContent.match(/\*\*(.*?)\*\*/g);
+        
+        if (bubbleMatches && bubbleMatches.length > 0) {
+          // 如果符合多气泡格式，则拆分发送
+          const newMsgs: Message[] = bubbleMatches.map((match: string) => {
+            const content = match.slice(2, -2); // 移除 ** 和 **
+            return {
+              id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+              charId: selectedChat.id,
+              role: 'assistant',
+              content: content.trim(),
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+          });
+          setMessages(prev => [...prev, ...newMsgs]);
+          
+          // 如果开启后台弹窗，分条发送通知
+          if (isPopupEnabled && Notification.permission === 'granted') {
+            newMsgs.forEach(msg => {
+               new Notification(selectedChat.name, {
+                 body: msg.content,
+                 icon: selectedChat.avatar || 'https://via.placeholder.com/100'
+               });
+            });
+          }
+        } else {
+          // 普通单气泡格式
+          const newMsg: Message = { 
+            id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, 
+            charId: selectedChat.id,
+            role: 'assistant', 
+            content: fullContent,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setMessages(prev => [...prev, newMsg]);
+
+          // 如果开启后台弹窗，发送通知
+          if (isPopupEnabled && Notification.permission === 'granted') {
+             new Notification(selectedChat.name, {
+               body: newMsg.content,
+               icon: selectedChat.avatar || 'https://via.placeholder.com/100'
+             });
+          }
+        }
       }
     } catch (e) {
       setMessages(prev => [...prev, { 
@@ -584,7 +679,7 @@ export default function App() {
             setIsSidebarOpen(true);
             setSidebarView('main');
           }}
-          className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center overflow-hidden hover:bg-gray-100 transition-all shadow-sm group"
+          className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center overflow-hidden hover:bg-gray-100 transition-all group"
         >
           {userProfile.avatar ? (
             <img src={userProfile.avatar} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
@@ -602,7 +697,7 @@ export default function App() {
         {activeTab === 'contacts' ? (
           <button 
             onClick={() => setIsAddCharModalOpen(true)}
-            className="w-10 h-10 rounded-xl bg-zinc-900 flex items-center justify-center text-white hover:bg-zinc-800 transition-all shadow-lg active:scale-95"
+            className="w-10 h-10 rounded-xl bg-zinc-900 flex items-center justify-center text-white hover:bg-zinc-800 transition-all active:scale-95"
           >
             <Plus size={20} />
           </button>
@@ -612,9 +707,32 @@ export default function App() {
       </header>
 
       {/* 主体内容区域 */}
-      <main className="flex-1 overflow-y-auto pb-24">
-        <AnimatePresence mode="wait">
-          {activeTab === 'messages' && (
+      <main 
+        className="flex-1 overflow-y-auto pb-24 relative"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {/* 下拉刷新提示器 */}
+        <div 
+          className="absolute left-0 right-0 flex justify-center pointer-events-none transition-all"
+          style={{ height: pullDistance, top: 0, opacity: pullDistance / 60 }}
+        >
+          <div className="flex flex-col items-center justify-center gap-1 mt-4">
+            <RotateCw size={16} className={`text-zinc-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span className="text-[8px] font-black uppercase tracking-widest text-zinc-300">
+              {isRefreshing ? 'Refreshing' : pullDistance > 60 ? 'Release to Refresh' : 'Pull to Refresh'}
+            </span>
+          </div>
+        </div>
+
+        <motion.div
+           animate={{ y: isRefreshing ? 60 : pullDistance }}
+           transition={{ type: 'spring', damping: 20, stiffness: 200 }}
+           className="h-full"
+        >
+          <AnimatePresence mode="wait">
+            {activeTab === 'messages' && (
             <motion.div key="messages" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-4 space-y-2">
               <div className="px-2 py-4 mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-300 border-b border-zinc-50">Active Flows</div>
               {characters.map(char => (
@@ -632,7 +750,7 @@ export default function App() {
                   }}
                   className="flex items-center gap-3 pl-2 pr-4 py-4 hover:bg-zinc-50 rounded-[2rem] transition-all cursor-pointer group active:scale-95 touch-none"
                 >
-                  <div className="w-10 h-10 rounded-2xl bg-zinc-900 flex items-center justify-center text-white text-lg font-bold overflow-hidden shadow-lg shadow-zinc-100">
+                  <div className="w-10 h-10 rounded-2xl bg-zinc-900 flex items-center justify-center text-white text-lg font-bold overflow-hidden">
                     {char.avatar ? <img src={char.avatar} className="w-full h-full object-cover" /> : char.name[0]}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -664,7 +782,7 @@ export default function App() {
               <div className="text-[10px] text-zinc-300 mb-6 font-bold uppercase tracking-widest px-2">Entity Lab</div>
               <div className="space-y-4">
                 {characters.map(char => (
-                  <div key={char.id} className="flex items-center justify-between p-5 bg-white border border-gray-50 rounded-[2.5rem] hover:shadow-xl hover:shadow-zinc-100 transition-all cursor-pointer group">
+                  <div key={char.id} className="flex items-center justify-between p-5 bg-white border border-gray-50 rounded-[2.5rem] transition-all cursor-pointer group">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-xl bg-zinc-900 text-white flex items-center justify-center text-sm font-bold overflow-hidden">
                         {char.avatar ? <img src={char.avatar} className="w-full h-full object-cover" /> : char.name[0]}
@@ -736,7 +854,7 @@ export default function App() {
                 {/* 发布按钮 */}
                 <button 
                   onClick={() => setIsCreatePostModalOpen(true)}
-                  className="absolute top-4 right-4 w-10 h-10 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all shadow-xl"
+                  className="absolute top-4 right-4 w-10 h-10 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all"
                 >
                   <Plus size={24} />
                 </button>
@@ -748,7 +866,7 @@ export default function App() {
                       const url = prompt('头像 URL:', userProfile.avatar);
                       if (url !== null) setUserProfile({ ...userProfile, avatar: url });
                     }}
-                    className="w-24 h-24 rounded-[1.8rem] border-[6px] border-white bg-zinc-900 overflow-hidden cursor-pointer active:scale-95 transition-all shadow-xl shadow-zinc-200/50"
+                    className="w-24 h-24 rounded-[1.8rem] border-[6px] border-white bg-zinc-900 overflow-hidden cursor-pointer active:scale-95 transition-all"
                   >
                     {userProfile.avatar ? (
                       <img src={userProfile.avatar} className="w-full h-full object-cover" />
@@ -813,6 +931,7 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+        </motion.div>
 
         <AnimatePresence mode="wait">
           {selectedPostId && (
@@ -881,10 +1000,10 @@ export default function App() {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed inset-0 bg-white z-[60] flex flex-col"
+              className="fixed inset-0 bg-white z-[60] flex flex-col pt-[env(safe-area-inset-top)]"
             >
-              {/* 聊天顶部 - 抬高并缩短一半 */}
-              <div className="flex items-center justify-between px-6 py-2 border-b border-gray-100 bg-white/80 backdrop-blur-md h-12">
+              {/* 聊天顶部 - 固定在最上方 */}
+              <div className="flex items-center justify-between px-6 py-2 border-b border-gray-100 bg-white/95 backdrop-blur-md h-16 shrink-0 sticky top-0 z-[70]">
                 <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400">
                   <ArrowLeft size={20} />
                 </button>
@@ -926,7 +1045,7 @@ export default function App() {
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
-                    className="fixed z-[100] bg-zinc-900 text-white rounded-2xl shadow-2xl py-2 w-32 border border-zinc-800"
+                    className="fixed z-[100] bg-zinc-900 text-white rounded-2xl py-2 w-32 border border-zinc-800"
                     style={{ left: contextMenu.x, top: Math.min(contextMenu.y, window.innerHeight - 200) }}
                   >
                     <ContextItem label="撤回" onClick={() => {
@@ -1009,7 +1128,7 @@ export default function App() {
 
                     {msg.role === 'assistant' && (
                       <div 
-                        className="rounded-xl bg-zinc-900 border border-zinc-50 overflow-hidden shrink-0 shadow-sm"
+                        className="rounded-xl bg-zinc-900 border border-zinc-50 overflow-hidden shrink-0"
                         style={{ width: settings.avatarSize || 36, height: settings.avatarSize || 36 }}
                       >
                         {settings.charAvatar || selectedChat.avatar ? (
@@ -1029,7 +1148,7 @@ export default function App() {
                         transcribedText={msg.content}
                         avatar={(
                           <div 
-                            className={`rounded-xl bg-zinc-900 border border-zinc-50 overflow-hidden shrink-0 shadow-sm ${msg.role === 'user' ? 'ml-2' : 'mr-2'}`}
+                            className={`rounded-xl bg-zinc-900 border border-zinc-50 overflow-hidden shrink-0 ${msg.role === 'user' ? 'ml-2' : 'mr-2'}`}
                             style={{ width: settings.avatarSize || 36, height: settings.avatarSize || 36 }}
                           >
                             {msg.role === 'assistant' ? (
@@ -1050,7 +1169,7 @@ export default function App() {
                       />
                     ) : (
                       <div 
-                        className={msg.postForward ? "w-full flex" : `relative p-4 ${msg.role === 'user' ? (settings.userBubbleColor ? '' : 'bg-zinc-900 text-white') : (settings.charBubbleColor ? '' : 'bg-white text-zinc-800 border border-gray-100 shadow-xl shadow-zinc-100/50')} rounded-3xl ${msg.role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} font-medium leading-relaxed ${glassClass} overflow-hidden`}
+                        className={msg.postForward ? "w-full flex" : `relative p-4 ${msg.role === 'user' ? (settings.userBubbleColor ? '' : 'bg-zinc-900 text-white') : (settings.charBubbleColor ? '' : 'bg-white text-zinc-800 border border-gray-100')} rounded-3xl ${msg.role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} font-medium leading-relaxed ${glassClass} overflow-hidden`}
                         style={msg.postForward ? {} : bubbleStyle}
                       >
                         {msg.postForward ? (
@@ -1090,7 +1209,7 @@ export default function App() {
 
                     {msg.role === 'user' && msg.type !== 'voice' && (
                       <div 
-                        className="rounded-xl bg-zinc-100 border border-zinc-50 overflow-hidden shrink-0 shadow-sm"
+                        className="rounded-xl bg-zinc-100 border border-zinc-50 overflow-hidden shrink-0"
                         style={{ width: settings.avatarSize || 36, height: settings.avatarSize || 36 }}
                       >
                         {settings.userAvatar || userProfile.avatar ? (
@@ -1108,7 +1227,7 @@ export default function App() {
               
               {isTyping && (
                 <div className="flex justify-start">
-                  <div className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm flex gap-1">
+                  <div className="p-4 bg-white border border-gray-100 rounded-2xl flex gap-1">
                     <span className="w-1.5 h-1.5 bg-zinc-300 rounded-full animate-bounce"></span>
                     <span className="w-1.5 h-1.5 bg-zinc-300 rounded-full animate-bounce [animation-delay:0.2s]"></span>
                     <span className="w-1.5 h-1.5 bg-zinc-300 rounded-full animate-bounce [animation-delay:0.4s]"></span>
@@ -1126,7 +1245,7 @@ export default function App() {
                     initial={{ y: 20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: 20, opacity: 0 }}
-                    className="absolute bottom-full left-6 right-6 mb-2 p-4 bg-zinc-900 text-white rounded-2xl shadow-xl flex items-center justify-between"
+                    className="absolute bottom-full left-6 right-6 mb-2 p-4 bg-zinc-900 text-white rounded-2xl flex items-center justify-between"
                   >
                     <div className="flex flex-col overflow-hidden">
                       <span className="text-[10px] font-black uppercase tracking-tighter opacity-50">
@@ -1169,7 +1288,7 @@ export default function App() {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         if (inputMessage.trim()) {
-                          handleSendMessage(inputMessage);
+                          handleSendMessage(false);
                           setInputMessage('');
                         }
                       }
@@ -1181,8 +1300,8 @@ export default function App() {
                   <button onClick={() => setIsEmojiPickerOpen(!isEmojiPickerOpen)} className="p-2 text-zinc-400 hover:text-zinc-600"><Smile size={18} /></button>
                 </div>
                 <button 
-                  onClick={() => setIsTyping(!isTyping)} // 单击获取 AI 回复 (模拟)
-                  className="mb-1 w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center text-white shadow-xl active:scale-90 transition-all shrink-0"
+                  onClick={() => handleSendMessage(true)}
+                  className="mb-1 w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center text-white active:scale-90 transition-all shrink-0"
                 >
                   <Sparkles size={18} />
                 </button>
@@ -1347,7 +1466,7 @@ export default function App() {
               <div className="p-10 pb-6 pt-20 bg-zinc-50/50">
                 <button 
                   onClick={() => setIsProfileEditing(!isProfileEditing)}
-                  className="w-20 h-20 rounded-[2rem] bg-zinc-900 flex items-center justify-center mb-6 transition-all hover:scale-105 shadow-xl shadow-zinc-200 overflow-hidden"
+                  className="w-20 h-20 rounded-[2rem] bg-zinc-900 flex items-center justify-center mb-6 transition-all hover:scale-105 overflow-hidden"
                 >
                   {userProfile.avatar ? (
                     <img src={userProfile.avatar} className="w-full h-full object-cover" alt="avatar" />
@@ -1367,7 +1486,7 @@ export default function App() {
                   <motion.div 
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
-                    className="mt-6 p-4 bg-white border border-gray-100 rounded-3xl space-y-6 shadow-lg shadow-gray-100"
+                    className="mt-6 p-4 bg-white border border-gray-100 rounded-3xl space-y-6 shadow-gray-100"
                   >
                     <div className="space-y-4">
                       <label className="block">
@@ -1415,7 +1534,7 @@ export default function App() {
 
                     <button 
                       onClick={() => setIsProfileEditing(false)}
-                      className="w-full bg-zinc-900 text-white text-xs py-5 rounded-2xl font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-zinc-200"
+                      className="w-full bg-zinc-900 text-white text-xs py-5 rounded-2xl font-black uppercase tracking-widest active:scale-95 transition-all"
                     >
                       Update Identity
                     </button>
@@ -1428,6 +1547,11 @@ export default function App() {
                 {sidebarView === 'main' ? (
                   <>
                     <div className="space-y-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest px-2">Navigation</span>
+                      </div>
+                      <SidebarItem icon={RotateCw} label="刷新页面" onClick={() => window.location.reload()} />
+                      <SidebarItem icon={BookOpen} label="世界书" onClick={() => setSidebarView('worldbook')} />
                       <SidebarItem icon={Settings} label="设置" onClick={() => setSidebarView('settings')} />
                       <SidebarItem icon={Zap} label="后台弹窗" onClick={() => setSidebarView('popup')} />
                       <SidebarItem icon={Palette} label="美化" onClick={() => setSidebarView('beauty')} />
@@ -1473,6 +1597,54 @@ export default function App() {
                     </button>
                     
                     {/* 子功能界面 */}
+                    {sidebarView === 'worldbook' && (
+                       <div className="space-y-6 p-2">
+                        <div className="flex justify-between items-center px-4">
+                          <h3 className="text-xl font-black tracking-tighter uppercase">World Book</h3>
+                          <button onClick={() => {
+                            const name = prompt('世界书预设名称:');
+                             if (name) setWorldBooks([...worldBooks, { id: Date.now().toString(), name, content: '', isActive: false }]);
+                          }} className="p-2 bg-zinc-900 text-white rounded-xl"><Plus size={16}/></button>
+                        </div>
+                        <div className="space-y-4 max-h-[60vh] overflow-y-auto px-2">
+                          {worldBooks.length === 0 && <p className="text-xs text-zinc-300 text-center py-10">暂无预设，点击右上角添加</p>}
+                          {worldBooks.map(wb => (
+                            <div key={wb.id} className={`p-4 rounded-3xl border ${wb.isActive ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-100 bg-white'} transition-all`}>
+                               <div className="flex justify-between items-center mb-3">
+                                 <input 
+                                   className="font-bold text-sm bg-transparent border-none p-0 focus:ring-0" 
+                                   value={wb.name} 
+                                   onChange={(e) => setWorldBooks(worldBooks.map(item => item.id === wb.id ? { ...item, name: e.target.value } : item))}
+                                 />
+                                 <div className="flex gap-2">
+                                   <button 
+                                     onClick={() => setWorldBooks(worldBooks.map(item => ({ ...item, isActive: item.id === wb.id ? !item.isActive : false })))}
+                                     className={`p-2 rounded-lg ${wb.isActive ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-400'}`}
+                                   >
+                                     <Check size={12}/>
+                                   </button>
+                                   <button 
+                                     onClick={() => {
+                                       if(confirm('删除这个世界书预设？')) setWorldBooks(worldBooks.filter(item => item.id !== wb.id));
+                                     }}
+                                     className="p-2 bg-red-50 text-red-500 rounded-lg"
+                                   >
+                                     <Trash2 size={12}/>
+                                   </button>
+                                 </div>
+                               </div>
+                               <textarea 
+                                 className="w-full h-32 bg-white border border-zinc-100 rounded-2xl p-3 text-xs resize-none"
+                                 placeholder="填入影响 AI 人设或世界观的内容..."
+                                 value={wb.content}
+                                 onChange={(e) => setWorldBooks(worldBooks.map(item => item.id === wb.id ? { ...item, content: e.target.value } : item))}
+                               />
+                            </div>
+                          ))}
+                        </div>
+                       </div>
+                    )}
+
                     {sidebarView === 'popup' && (
                       <div className="space-y-8 p-2">
                         <div className="p-8 bg-zinc-900 rounded-[2.5rem] text-white space-y-6 shadow-2xl relative overflow-hidden">
@@ -1488,11 +1660,23 @@ export default function App() {
                         <div className="bg-white border border-zinc-100 rounded-[2rem] p-6 space-y-6">
                            <div className="flex items-center justify-between">
                               <div className="flex flex-col">
-                                <span className="text-sm font-black uppercase">开启后台弹窗</span>
-                                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-tight">System Notification Toggle</span>
+                                <span className="text-sm font-black uppercase">开启浏览器弹窗</span>
+                                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-tight">System Notification</span>
                               </div>
                               <button 
-                                onClick={() => setIsPopupEnabled(!isPopupEnabled)}
+                                onClick={() => {
+                                  if (!isPopupEnabled) {
+                                    Notification.requestPermission().then(permission => {
+                                      if (permission === 'granted') {
+                                        setIsPopupEnabled(true);
+                                      } else {
+                                        alert('请在浏览器设置中允许通知权限。');
+                                      }
+                                    });
+                                  } else {
+                                    setIsPopupEnabled(false);
+                                  }
+                                }}
                                 className={`w-14 h-8 rounded-full transition-all flex items-center px-1 ${isPopupEnabled ? 'bg-zinc-900' : 'bg-zinc-200'}`}
                               >
                                 <motion.div 
@@ -1502,14 +1686,24 @@ export default function App() {
                               </button>
                            </div>
 
-                           <div className="pt-4 border-t border-zinc-50">
-                              <button 
-                                onClick={() => alert('【测试弹窗】您有一条来自角色的未读消息！')}
-                                className="w-full py-4 bg-zinc-50 hover:bg-zinc-100 rounded-2xl flex items-center justify-center gap-3 transition-colors active:scale-95"
-                              >
+                           <div className="p-4 bg-zinc-50 rounded-2xl space-y-3">
+                             <p className="text-[10px] text-zinc-400 font-bold uppercase">Actions</p>
+                             <button 
+                               onClick={() => {
+                                 if (isPopupEnabled && Notification.permission === 'granted') {
+                                   new Notification('通知测试', {
+                                     body: '你好！这是来自浏览器的真实通知弹窗。',
+                                     icon: userProfile.avatar || 'https://via.placeholder.com/100'
+                                   });
+                                 } else {
+                                   alert('请先开启开关并授予权限。');
+                                 }
+                               }}
+                               className="w-full py-4 bg-white border border-zinc-200 rounded-2xl flex items-center justify-center gap-3 transition-colors active:scale-95"
+                             >
                                 <Bell size={18} className="text-zinc-400" />
-                                <span className="text-xs font-black uppercase tracking-widest text-zinc-600">测试弹窗效果</span>
-                              </button>
+                                <span className="text-xs font-black uppercase tracking-widest text-zinc-600">测试真实弹窗</span>
+                             </button>
                            </div>
                         </div>
 
@@ -2047,10 +2241,10 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
       </div>
 
 
-      <div className="p-8 border-t border-zinc-50 bg-white shadow-up-sm sticky bottom-0">
+      <div className="p-8 border-t border-zinc-50 bg-white sticky bottom-0">
         <button 
           onClick={handleSave}
-          className="w-full bg-zinc-900 text-white font-black uppercase tracking-widest py-5 rounded-[2rem] active:scale-95 transition-all shadow-xl shadow-zinc-200"
+          className="w-full bg-zinc-900 text-white font-black uppercase tracking-widest py-5 rounded-[2rem] active:scale-95 transition-all"
         >
           Save Configurations
         </button>
@@ -2086,7 +2280,7 @@ function AddCharacterModal({ isOpen, onClose, onSave, ImageUploader }: any) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-6">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-md" onClick={onClose} />
-      <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl relative overflow-hidden flex flex-col max-h-[80vh]">
+      <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-white w-full max-w-md rounded-[3rem] relative overflow-hidden flex flex-col max-h-[80vh]">
         <div className="p-8 border-b border-gray-100 flex justify-between items-center shrink-0">
           <h3 className="text-xl font-black tracking-tighter uppercase">Initialize Entity</h3>
           <button onClick={onClose} className="p-2 bg-zinc-50 rounded-full text-zinc-400"><X size={20}/></button>
@@ -2128,7 +2322,7 @@ function AddCharacterModal({ isOpen, onClose, onSave, ImageUploader }: any) {
           <button 
             onClick={() => onSave({ ...formData, id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}` })}
             disabled={!formData.name}
-            className="w-full bg-zinc-900 text-white font-black uppercase tracking-widest py-5 rounded-3xl active:scale-95 transition-all shadow-xl shadow-zinc-200 disabled:opacity-50"
+            className="w-full bg-zinc-900 text-white font-black uppercase tracking-widest py-5 rounded-3xl active:scale-95 transition-all disabled:opacity-50"
           >
             Create Entity
           </button>
@@ -2152,7 +2346,7 @@ function VoiceBubble({ role, duration, style, glassClass, transcribedText, avata
             setShowTranscription(!showTranscription);
             setTimeout(() => setIsAnimating(false), 2000);
           }}
-          className={`relative cursor-pointer min-w-[120px] p-4 flex items-center gap-3 active:scale-95 transition-all ${role === 'user' ? (style.backgroundColor ? '' : 'bg-zinc-900 text-white') : (style.backgroundColor ? '' : 'bg-white text-zinc-800 border border-gray-100 shadow-xl shadow-zinc-100/50')} rounded-3xl ${role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} ${glassClass}`}
+          className={`relative cursor-pointer min-w-[120px] p-4 flex items-center gap-3 active:scale-95 transition-all ${role === 'user' ? (style.backgroundColor ? '' : 'bg-zinc-900 text-white') : (style.backgroundColor ? '' : 'bg-white text-zinc-800 border border-gray-100')} rounded-3xl ${role === 'user' ? 'rounded-tr-sm' : 'rounded-tl-sm'} ${glassClass}`}
           style={style}
         >
           <Mic size={16} className={isAnimating ? 'animate-pulse' : ''} />
@@ -2173,7 +2367,7 @@ function VoiceBubble({ role, duration, style, glassClass, transcribedText, avata
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className={`text-[10px] p-2 rounded-xl bg-white/50 border border-zinc-100 text-zinc-400 italic shadow-sm mt-1 max-w-full break-words`}
+              className={`text-[10px] p-2 rounded-xl bg-white/50 border border-zinc-100 text-zinc-400 italic mt-1 max-w-full break-words`}
             >
               {transcribedText}
             </motion.div>
@@ -2225,7 +2419,7 @@ function TransferModal({ isOpen, onClose, onConfirm, state, setState }: any) {
         <button 
           onClick={() => onConfirm(state.amount, state.remark)}
           disabled={!state.amount}
-          className="w-full bg-zinc-900 text-white font-black uppercase tracking-widest py-5 rounded-2xl active:scale-95 transition-all shadow-xl shadow-zinc-200 disabled:opacity-50"
+          className="w-full bg-zinc-900 text-white font-black uppercase tracking-widest py-5 rounded-2xl active:scale-95 transition-all disabled:opacity-50"
         >
           Confirm Transfer
         </button>
@@ -2237,7 +2431,7 @@ function TransferModal({ isOpen, onClose, onConfirm, state, setState }: any) {
 function TransferCard({ role, amount, remark, style, glassClass }: any) {
   return (
     <div 
-      className={`min-w-[180px] rounded-2xl overflow-hidden shadow-xl shadow-orange-100 flex flex-col ${role === 'user' ? 'bg-orange-500' : 'bg-orange-400'} text-white transition-all active:scale-[0.98] ${glassClass}`}
+      className={`min-w-[180px] rounded-2xl overflow-hidden shadow-orange-100 flex flex-col ${role === 'user' ? 'bg-orange-500' : 'bg-orange-400'} text-white transition-all active:scale-[0.98] ${glassClass}`}
       style={{ ...style, backgroundColor: undefined, padding: 0 }}
     >
       <div className="p-4 flex items-center gap-3 border-b border-white/10">
@@ -2299,7 +2493,7 @@ function PostCard({ post, userProfile, characters, onLike, onComment, onForward,
           </div>
           
           {post.image && (
-            <div onClick={onClick} className="rounded-3xl overflow-hidden shadow-xl shadow-zinc-100/50 border border-zinc-50 relative group">
+            <div onClick={onClick} className="rounded-3xl overflow-hidden border border-zinc-50 relative group">
               {post.isTextImage ? (
                 <div className="w-full h-48 bg-zinc-900 flex items-center justify-center p-8 text-center bg-gradient-to-br from-zinc-800 to-black">
                   <span className="text-white font-black text-lg tracking-tighter drop-shadow-2xl opacity-80 leading-tight">
@@ -2501,7 +2695,7 @@ function CreatePostModal({ isOpen, onClose, onConfirm }: any) {
       <motion.div 
         initial={{ scale: 0.9, y: 20 }} 
         animate={{ scale: 1, y: 0 }} 
-        className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl relative p-8 flex flex-col gap-6"
+        className="bg-white w-full max-w-sm rounded-[2.5rem] relative p-8 flex flex-col gap-6"
       >
         <div className="flex justify-between items-center">
           <h3 className="text-lg font-black tracking-tighter uppercase">New Discovery</h3>
@@ -2551,7 +2745,7 @@ function CreatePostModal({ isOpen, onClose, onConfirm }: any) {
               onClose();
             }
           }}
-          className="w-full bg-zinc-900 text-white font-black uppercase tracking-widest py-5 rounded-2xl active:scale-95 transition-all shadow-xl shadow-zinc-200"
+          className="w-full bg-zinc-900 text-white font-black uppercase tracking-widest py-5 rounded-2xl active:scale-95 transition-all"
         >
           Publish Moment
         </button>
