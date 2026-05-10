@@ -706,10 +706,12 @@ export default function App() {
 
     // 角色设定取 char.notes
     const systemPrompt = `你是 ${latestChar.name}。${latestChar.notes || ''}${activeWorldBook ? `\n\n【世界背景/世界书】\n${activeWorldBook.content}` : ''}
-【系统指令 - 必须执行】这是一段在即时通讯软件中的聊天。为了提供真实的体验，你**必须**像真人一样将一句话切分成 2-4 条短消息发送。
-你**必须**在每条短消息之间插入 "|||" 作为分隔符。
-例如：回复 "在干嘛呢？|||我刚刚才到家。|||真的累死我了。" 
-不要回复长篇大论的一整段文字。请根据语意自然切分，绝对不要输出任何多余解释。${countRequire ? ' ' + countRequire : ''}`;
+
+【系统指令】
+1. 模拟真人即时聊天，回复尽量简洁自然，禁止使用任何形式的动作、神态或心理描写（严禁使用括号或星号标注的旁白内容）。
+2. 必须将较长的回复切分成 2-4 条短消息发送。
+3. 请在每条短消息之间必须使用 "|||" 作为分隔符，严禁输出多余解释。
+例如：回复 "在干嘛呢？|||我刚刚才到家。|||真的累死我了。" ${countRequire ? ' ' + countRequire : ''}`;
     
     // 获取当前聊天历史
     const currentChatHistory = messages.filter(m => m.charId === latestChar.id);
@@ -739,14 +741,27 @@ export default function App() {
         // 1. 优先按 AI 提供的 ||| 拆分
         let parts = fullContent.split('|||').map((s: string) => s.trim()).filter(Boolean);
         
-        // 2. 兜底逻辑：如果 AI 没用 ||| 且内容较长，则尝试按中文/英文标点自动拆分
-        if (parts.length === 1 && fullContent.length > 30) {
-            const autoSplit = fullContent.split(/([。！？；!?;])\s*/).filter(Boolean);
+        // 2. 兜底逻辑：如果 AI 没用 ||| 且内容有一定长度，则尝试按标点/换行自动拆分
+        if (parts.length === 1 && fullContent.length > 15) {
+            // 增强的拆分逻辑：支持更多种符号和连续句点
+            const autoSplit = fullContent.split(/([。！？；.!?;\n]|\.{3,})\s*/).filter(Boolean);
             const combined: string[] = [];
-            for (let i = 0; i < autoSplit.length; i += 2) {
-                const sentence = autoSplit[i] + (autoSplit[i+1] || '');
-                if (sentence.trim()) combined.push(sentence.trim());
+            let currentBuf = '';
+            
+            for (let i = 0; i < autoSplit.length; i++) {
+                const text = autoSplit[i];
+                if (/^[。！？；.!?;\n\s]+$|^\.{3,}$/.test(text)) {
+                    currentBuf += text.trim();
+                    if (currentBuf.length > 5 || i === autoSplit.length - 1) {
+                        if (currentBuf) combined.push(currentBuf);
+                        currentBuf = '';
+                    }
+                } else {
+                    if (currentBuf) combined.push(currentBuf);
+                    currentBuf = text;
+                }
             }
+            if (currentBuf) combined.push(currentBuf);
             if (combined.length > 1) parts = combined;
         }
 
