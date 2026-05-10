@@ -376,6 +376,18 @@ export default function App() {
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, msgId: string } | null>(null);
   const menuTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  // 自动滚动到底部
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    if (selectedChat) {
+      scrollToBottom();
+    }
+  }, [selectedChat, messages]);
 
   // 消息菜单自动消失逻辑
   useEffect(() => {
@@ -570,10 +582,11 @@ export default function App() {
   const handleSendMessage = async (triggerAi: boolean = false) => {
     if (!selectedChat || isTyping) return;
     
+    const trimmedInput = inputMessage.trim();
     // 如果没有输入且不触发 AI，则直接返回
-    if (!inputMessage.trim() && !triggerAi) return;
+    if (!trimmedInput && !triggerAi) return;
 
-    const content = inputMessage.trim();
+    const content = trimmedInput;
     const msgType = isVoiceMode ? 'voice' : 'text';
     
     // 如果有输入，先发送消息
@@ -603,13 +616,29 @@ export default function App() {
 
     if (!triggerAi) return;
 
+    // 检查 API 配置
+    if (!apiSettings.baseUrl || !apiSettings.apiKey) {
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const errorMsg: Message = {
+        id: `error-${Date.now()}`,
+        charId: selectedChat.id,
+        role: 'assistant',
+        content: "请先配置api",
+        time,
+        type: 'text'
+      };
+      setMessages(prev => [...prev, errorMsg]);
+      return;
+    }
+
     setIsTyping(true);
     const activeWorldBook = worldBooks.find(wb => wb.isActive);
     const systemPrompt = `你是 ${selectedChat.name}。${selectedChat.notes || ''}${activeWorldBook ? `\n\n【世界背景/世界书】\n${activeWorldBook.content}` : ''}`;
     
+    // 获取当前聊天历史
     const currentChatHistory = messages.filter(m => m.charId === selectedChat.id);
-    // 如果刚才发了新消息，还没进 state，这里需要补丁。不过 setMessages 是异步的，
-    // 这里我们可以手动构造最新历史。
+    
+    // 如果立刻刚才发了消息，消息还没进 messages state (异步)，所以这里我们要手动补齐历史
     const latestHistory = content 
       ? [...currentChatHistory, { role: 'user', content } as Message]
       : currentChatHistory;
@@ -1025,8 +1054,8 @@ export default function App() {
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className="fixed inset-0 bg-white z-[60] flex flex-col pt-[env(safe-area-inset-top)]"
             >
-              {/* 聊天顶栏 - 修改为 fixed 以防止被键盘推走 */}
-              <div className="fixed top-0 left-0 right-0 h-16 flex items-center justify-between px-6 bg-white/95 backdrop-blur-md border-b border-gray-100 z-[100]">
+              {/* 聊天顶栏 - 使用 sticky 以更好地适应虚拟键盘 */}
+              <div className="sticky top-0 h-16 flex items-center justify-between px-6 bg-white/95 backdrop-blur-md border-b border-gray-100 z-[100] shrink-0">
                 <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400">
                   <ArrowLeft size={20} />
                 </button>
@@ -1052,9 +1081,9 @@ export default function App() {
                 setCharacters={setCharacters}
               />
 
-              {/* 消息区域 (增加顶距以免被 fixed 顶栏遮挡) */}
+              {/* 消息区域 (增加顶距以免被 sticky 顶栏遮挡) */}
               <div 
-                className="flex-1 overflow-y-auto px-3 pb-6 pt-20 space-y-6 bg-zinc-50/50 relative"
+                className="flex-1 overflow-y-auto px-3 pb-6 space-y-6 bg-zinc-50/50 relative"
               style={chatSettings[selectedChat.id]?.background ? { backgroundImage: `url(${chatSettings[selectedChat.id]?.background})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
               onClick={() => {
                 setContextMenu(null);
@@ -1126,8 +1155,11 @@ export default function App() {
                 const glassClass = settings.frostedGlass ? 'backdrop-blur-md bg-opacity-70' : '';
 
                 return (
-                  <div 
+                  <motion.div 
                     key={msg.id} 
+                    initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.3 }}
                     className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} ${msg.postForward ? 'items-start' : 'items-end'} gap-2 group relative`}
                     onContextMenu={(e) => {
                       e.preventDefault();
@@ -1201,7 +1233,7 @@ export default function App() {
                               setPostDetailReturnChatId(selectedChat!.id);
                               setSelectedPostId(msg.postForward!.id);
                             }}
-                            className={`w-[60%] aspect-[4/2] bg-white border border-zinc-100 rounded-2xl p-4 flex flex-col justify-between cursor-pointer hover:bg-zinc-50 transition-all active:scale-[0.98] shadow-sm relative ${msg.role === 'user' ? 'ml-auto' : 'mr-auto'}`}
+                            className={`w-[60%] aspect-[4/2] bg-white border border-zinc-100 rounded-2xl p-4 flex flex-col justify-between cursor-pointer hover:bg-zinc-50 transition-all active:scale-[0.98] relative ${msg.role === 'user' ? 'ml-auto' : 'mr-auto'}`}
                           >
                             <div className="flex items-center gap-2 border-b border-zinc-50 pb-2">
                               <div className="w-5 h-5 rounded-md bg-zinc-900 flex items-center justify-center text-[8px] font-black text-white shrink-0">
@@ -1244,9 +1276,10 @@ export default function App() {
                         )}
                       </div>
                     )}
-                  </div>
+                  </motion.div>
                 );
               })}
+              <div ref={messagesEndRef} />
               
               {isTyping && (
                 <div className="flex justify-start">
@@ -1509,7 +1542,7 @@ export default function App() {
                   <motion.div 
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
-                    className="mt-6 p-4 bg-white border border-gray-100 rounded-3xl space-y-6 shadow-gray-100"
+                    className="mt-6 p-4 bg-white border border-gray-100 rounded-3xl space-y-6"
                   >
                     <div className="space-y-4">
                       <label className="block">
@@ -1704,7 +1737,7 @@ export default function App() {
                               >
                                 <motion.div 
                                   animate={{ x: isPopupEnabled ? 24 : 0 }}
-                                  className="w-6 h-6 bg-white rounded-full shadow-sm"
+                                  className="w-6 h-6 bg-white rounded-full"
                                 />
                               </button>
                            </div>
@@ -1913,7 +1946,7 @@ export default function App() {
                                   const text = prompt(`${dateStr} 的新待办:`);
                                   if (text) setTodos(prev => [...prev, { id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, text, completed: false, color: PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)], date: dateStr }]);
                                 }}
-                                className={`aspect-square flex flex-col items-center justify-center text-[10px] rounded-xl transition-all cursor-pointer relative group ${new Date().toDateString() === new Date(year, month, d).toDateString() ? 'bg-zinc-900 text-white shadow-lg' : 'hover:bg-zinc-200'}`}
+                                className={`aspect-square flex flex-col items-center justify-center text-[10px] rounded-xl transition-all cursor-pointer relative group ${new Date().toDateString() === new Date(year, month, d).toDateString() ? 'bg-zinc-900 text-white' : 'hover:bg-zinc-200'}`}
                               >
                                 <span className="z-1">{d}</span>
                                 {dayTodos.length > 0 && (
@@ -1933,7 +1966,7 @@ export default function App() {
                       <p className="text-[10px] font-black text-zinc-300 uppercase tracking-widest px-2">Current Plans</p>
                       {todos.length === 0 && <div className="text-center py-10 text-zinc-200 text-xs italic">No agendas created...</div>}
                       {todos.map(t => (
-                        <div key={t.id} className="flex items-center gap-3 p-4 bg-zinc-50 rounded-[2rem] border border-zinc-100 shadow-sm group">
+                        <div key={t.id} className="flex items-center gap-3 p-4 bg-zinc-50 rounded-[2rem] border border-zinc-100 group">
                           <button 
                             onClick={() => setTodos(todos.map(i => i.id === t.id ? {...i, completed: !i.completed} : i))}
                             className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${t.completed ? 'bg-zinc-900 border-zinc-900' : 'border-zinc-200'}`}
@@ -2107,7 +2140,7 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
       
       <div className="flex-1 overflow-y-auto px-6 space-y-4 pb-24 custom-scrollbar">
         {/* 角色设置 */}
-        <div className="border border-zinc-100 rounded-[2rem] overflow-hidden bg-white shadow-sm">
+        <div className="border border-zinc-100 rounded-[2rem] overflow-hidden bg-white">
           <button 
             onClick={() => toggleSection('char')}
             className="w-full px-6 py-5 flex items-center justify-between hover:bg-zinc-50 transition-colors"
@@ -2147,7 +2180,7 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
         </div>
 
         {/* 窗口美化 */}
-        <div className="border border-zinc-100 rounded-[2rem] overflow-hidden bg-white shadow-sm">
+        <div className="border border-zinc-100 rounded-[2rem] overflow-hidden bg-white">
           <button 
             onClick={() => toggleSection('aesthetics')}
             className="w-full px-6 py-5 flex items-center justify-between hover:bg-zinc-50 transition-colors"
@@ -2195,7 +2228,7 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
         </div>
 
         {/* 聊天功能 */}
-        <div className="border border-zinc-100 rounded-[2rem] overflow-hidden bg-white shadow-sm">
+        <div className="border border-zinc-100 rounded-[2rem] overflow-hidden bg-white">
           <button 
             onClick={() => toggleSection('functions')}
             className="w-full px-6 py-5 flex items-center justify-between hover:bg-zinc-50 transition-colors"
@@ -2414,7 +2447,7 @@ function TransferModal({ isOpen, onClose, onConfirm, state, setState }: any) {
       <motion.div 
         initial={{ scale: 0.9, y: 20 }} 
         animate={{ scale: 1, y: 0 }} 
-        className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl relative p-8 space-y-6"
+        className="bg-white w-full max-w-sm rounded-[2.5rem] relative p-8 space-y-6"
       >
         <h3 className="text-lg font-black tracking-tighter uppercase text-center">Initiate Transfer</h3>
         <div className="space-y-4">
@@ -2454,7 +2487,7 @@ function TransferModal({ isOpen, onClose, onConfirm, state, setState }: any) {
 function TransferCard({ role, amount, remark, style, glassClass }: any) {
   return (
     <div 
-      className={`min-w-[180px] rounded-2xl overflow-hidden shadow-orange-100 flex flex-col ${role === 'user' ? 'bg-orange-500' : 'bg-orange-400'} text-white transition-all active:scale-[0.98] ${glassClass}`}
+      className={`min-w-[180px] rounded-2xl overflow-hidden flex flex-col ${role === 'user' ? 'bg-orange-500' : 'bg-orange-400'} text-white transition-all active:scale-[0.98] ${glassClass}`}
       style={{ ...style, backgroundColor: undefined, padding: 0 }}
     >
       <div className="p-4 flex items-center gap-3 border-b border-white/10">
@@ -2519,7 +2552,7 @@ function PostCard({ post, userProfile, characters, onLike, onComment, onForward,
             <div onClick={onClick} className="rounded-3xl overflow-hidden border border-zinc-50 relative group">
               {post.isTextImage ? (
                 <div className="w-full h-48 bg-zinc-900 flex items-center justify-center p-8 text-center bg-gradient-to-br from-zinc-800 to-black">
-                  <span className="text-white font-black text-lg tracking-tighter drop-shadow-2xl opacity-80 leading-tight">
+                  <span className="text-white font-black text-lg tracking-tighter opacity-80 leading-tight">
                     {post.image}
                   </span>
                   <div className="absolute top-4 right-4 opacity-20"><Quote size={32} className="text-white" /></div>
@@ -2791,7 +2824,7 @@ function ForwardModal({ isOpen, onClose, characters, post, onForward }: any) {
       <motion.div 
         initial={{ scale: 0.9, y: 20 }} 
         animate={{ scale: 1, y: 0 }} 
-        className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl relative p-8 space-y-6"
+        className="bg-white w-full max-w-sm rounded-[2.5rem] relative p-8 space-y-6"
       >
         <h3 className="text-lg font-black tracking-tighter uppercase text-center">Forward Discovery</h3>
         <div className="max-h-64 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
@@ -2901,7 +2934,7 @@ function PlusMenuItem({ icon: Icon, label, onClick }: { icon: any, label: string
       onClick={onClick}
       className="flex flex-col items-center justify-center gap-2 group active:scale-90 transition-transform"
     >
-      <div className="w-12 h-12 bg-white rounded-2xl border border-gray-100 flex items-center justify-center text-zinc-400 group-hover:text-zinc-900 group-hover:shadow-sm transition-all">
+      <div className="w-12 h-12 bg-white rounded-2xl border border-gray-100 flex items-center justify-center text-zinc-400 group-hover:text-zinc-900 transition-all">
         <Icon size={20} />
       </div>
       <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{label}</span>
