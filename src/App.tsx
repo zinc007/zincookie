@@ -706,7 +706,10 @@ export default function App() {
 
     // 角色设定取 char.notes
     const systemPrompt = `你是 ${latestChar.name}。${latestChar.notes || ''}${activeWorldBook ? `\n\n【世界背景/世界书】\n${activeWorldBook.content}` : ''}
-【系统提示】你可以根据语意使用 "|||" 分隔符来实现分句发送，从而形成多个气泡。例如："今天天气真好|||太阳很明媚|||风也不大"。请根据语意自然分句或分段使用这个功能，不要输出多余解释。${countRequire ? ' ' + countRequire : ''}`;
+【系统指令 - 必须执行】这是一段在即时通讯软件中的聊天。为了提供真实的体验，你**必须**像真人一样将一句话切分成 2-4 条短消息发送。
+你**必须**在每条短消息之间插入 "|||" 作为分隔符。
+例如：回复 "在干嘛呢？|||我刚刚才到家。|||真的累死我了。" 
+不要回复长篇大论的一整段文字。请根据语意自然切分，绝对不要输出任何多余解释。${countRequire ? ' ' + countRequire : ''}`;
     
     // 获取当前聊天历史
     const currentChatHistory = messages.filter(m => m.charId === latestChar.id);
@@ -733,8 +736,19 @@ export default function App() {
       if (data.choices?.[0]?.message?.content) {
         const fullContent = data.choices[0].message.content;
         
-        // 解析多气泡格式: 使用 ||| 作为分隔符
-        const parts = fullContent.split('|||').map((s: string) => s.trim()).filter(Boolean);
+        // 1. 优先按 AI 提供的 ||| 拆分
+        let parts = fullContent.split('|||').map((s: string) => s.trim()).filter(Boolean);
+        
+        // 2. 兜底逻辑：如果 AI 没用 ||| 且内容较长，则尝试按中文/英文标点自动拆分
+        if (parts.length === 1 && fullContent.length > 30) {
+            const autoSplit = fullContent.split(/([。！？；!?;])\s*/).filter(Boolean);
+            const combined: string[] = [];
+            for (let i = 0; i < autoSplit.length; i += 2) {
+                const sentence = autoSplit[i] + (autoSplit[i+1] || '');
+                if (sentence.trim()) combined.push(sentence.trim());
+            }
+            if (combined.length > 1) parts = combined;
+        }
 
         // 先关闭初次 loading 状态
         setIsTyping(false);
