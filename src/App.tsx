@@ -943,7 +943,6 @@ export default function App() {
                     Cookie Space
                   </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-zinc-900/10 opacity-60" />
                 
                 {/* 背景切换 */}
                 <button 
@@ -1121,13 +1120,13 @@ export default function App() {
             >
               {/* 聊天顶栏 - 固定在 flex-col 顶部 */}
               {!isChatSettingsOpen && (
-                <div className="flex-none h-16 bg-white/95 backdrop-blur-md border-b border-gray-100 z-[50] flex items-center justify-between px-6 pt-[env(safe-area-inset-top)] relative">
+                <div className="fixed top-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-md border-b border-gray-100 z-[110] flex items-center justify-between px-6 pt-[env(safe-area-inset-top)]">
                   <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400 -ml-2">
                     <ArrowLeft size={20} />
                   </button>
                   <div className="flex flex-col items-center">
-                    <span className="font-bold text-zinc-900 text-sm tracking-tight shadow-sm">{chatSettings[selectedChat.id]?.nickname || selectedChat.name}</span>
-                    <span className="text-[9px] text-emerald-500 font-black flex items-center gap-1 uppercase tracking-widest drop-shadow-sm">• Online</span>
+                    <span className="font-bold text-zinc-900 text-sm tracking-tight">{chatSettings[selectedChat.id]?.nickname || selectedChat.name}</span>
+                    <span className="text-[9px] text-emerald-500 font-black flex items-center gap-1 uppercase tracking-widest">• Online</span>
                   </div>
                   <button 
                     onClick={() => setIsChatSettingsOpen(true)}
@@ -1150,7 +1149,7 @@ export default function App() {
 
               {/* 消息区域 */}
               <div 
-                className="flex-1 overflow-y-auto px-3 pb-10 space-y-6 bg-zinc-50/50 relative"
+                className="flex-1 overflow-y-auto px-3 pb-10 pt-[calc(4rem+env(safe-area-inset-top))] space-y-6 bg-zinc-50/50 relative"
                 style={{
                   backgroundImage: chatSettings[selectedChat.id]?.background ? `url(${chatSettings[selectedChat.id]?.background})` : undefined,
                   backgroundSize: 'cover',
@@ -1331,7 +1330,7 @@ export default function App() {
                               setPostDetailReturnChatId(selectedChat!.id);
                               setSelectedPostId(msg.postForward!.id);
                             }}
-                            className={`w-2/3 aspect-[4/2] bg-white border border-zinc-100 rounded-2xl p-4 flex flex-col justify-between cursor-pointer hover:bg-zinc-50 transition-all active:scale-[0.98] relative ${msg.role === 'user' ? 'ml-auto' : 'mr-auto'}`}
+                            className={`w-4/5 aspect-[4/2] bg-white border border-zinc-100 rounded-2xl p-4 flex flex-col justify-between cursor-pointer hover:bg-zinc-50 transition-all active:scale-[0.98] relative ${msg.role === 'user' ? 'ml-auto' : 'mr-auto'}`}
                           >
                             <div className="flex items-center gap-2 border-b border-zinc-50 pb-2">
                               <div className="w-5 h-5 rounded-md bg-zinc-900 flex items-center justify-center text-[8px] font-black text-white shrink-0">
