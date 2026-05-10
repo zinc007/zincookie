@@ -706,7 +706,12 @@ export default function App() {
 
     // 角色设定取 char.notes
     const systemPrompt = `你是 ${latestChar.name}。${latestChar.notes || ''}${activeWorldBook ? `\n\n【世界背景/世界书】\n${activeWorldBook.content}` : ''}
-【系统提示】你可以根据语意使用 "|||" 分隔符来实现分句发送，从而形成多个气泡。例如："今天天气真好|||太阳很明媚|||风也不大"。${countRequire}请直接输出正文，并根据限制要求用 "|||" 分割，不要输出多余解释。`;
+【系统指令 - 必须严格遵守】
+这是一段在即时通讯软件中的聊天。请务必像真人一样，把一段话切分成多条短消息发送！
+你必须在每句话之间使用 "|||" 作为分隔符，从而形成多个气泡。
+例如输入："嗯，我知道了。|||你今天过得怎么样？|||有没有按时吃饭？"
+${countRequire ? '要求：' + countRequire : '要求：请尽可能分成 2-3 个气泡发送。'}
+请直接输出正文，必须用 "|||" 分割，绝对不要输出任何多余解释！`;
     
     // 获取当前聊天历史
     const currentChatHistory = messages.filter(m => m.charId === latestChar.id);
@@ -734,19 +739,24 @@ export default function App() {
         const fullContent = data.choices[0].message.content;
         
         // 解析多气泡格式: 使用 ||| 作为分隔符
-        const parts = fullContent.split('|||').map((s: string) => s.trim()).filter(Boolean);
+        let parts = fullContent.split('|||').map((s: string) => s.trim()).filter(Boolean);
         
+        // 如果AI还是忘了用 |||，尝试用换行符切分
+        if (parts.length === 1 && fullContent.includes('\n')) {
+          parts = fullContent.split('\n').map((s: string) => s.trim()).filter(Boolean);
+        }
+
         // 先关闭初次 loading 状态
         setIsTyping(false);
 
-        if (parts.length > 1) {
+        if (parts.length > 0) {
           // 如果符合多气泡格式，则顺序发送
           const sendPartsSequential = async () => {
             for (let i = 0; i < parts.length; i++) {
               if (i > 0) {
                 setIsTyping(true);
-                // 模拟处理/打字延迟
-                await new Promise(r => setTimeout(r, 1000 + Math.random() * 500));
+                // 强制等待至少1秒，模拟打字感
+                await new Promise(r => setTimeout(r, 1000 + Math.random() * 800));
                 setIsTyping(false);
               }
               
@@ -770,24 +780,6 @@ export default function App() {
             }
           };
           await sendPartsSequential();
-        } else {
-          // 普通单气泡格式
-          const newMsg: Message = { 
-            id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, 
-            charId: selectedChat.id,
-            role: 'assistant', 
-            content: parts[0] || fullContent,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          };
-          setMessages(prev => [...prev, newMsg]);
-
-          // 如果开启后台弹窗，发送通知
-          if (isPopupEnabled && Notification.permission === 'granted') {
-             new Notification(selectedChat.name, {
-               body: newMsg.content,
-               icon: selectedChat.avatar || 'https://via.placeholder.com/100'
-             });
-          }
         }
         
         // 记忆模块检查：检查是否需要进行总结
@@ -1197,9 +1189,9 @@ export default function App() {
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className="fixed inset-0 bg-white z-[60] flex flex-col pt-[env(safe-area-inset-top)]"
             >
-              {/* 聊天顶栏 - 固定在 flex-col 顶部 */}
+              {/* 聊天顶栏 - 排在 flex-col 顶部 */}
               {!isChatSettingsOpen && (
-                <div className="fixed top-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-md border-b border-gray-100 z-[110] flex items-center justify-between px-6 pt-[env(safe-area-inset-top)]">
+                <div className="shrink-0 h-16 bg-white/95 backdrop-blur-md border-b border-gray-100 z-[110] flex items-center justify-between px-6 pt-[env(safe-area-inset-top)]">
                   <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400 -ml-2">
                     <ArrowLeft size={20} />
                   </button>
@@ -1228,7 +1220,7 @@ export default function App() {
 
               {/* 消息区域 */}
               <div 
-                className="flex-1 overflow-y-auto px-3 pb-10 pt-[calc(4rem+env(safe-area-inset-top))] space-y-6 bg-zinc-50/50 relative"
+                className="flex-1 overflow-y-auto px-3 pb-10 space-y-6 bg-zinc-50/50 relative"
                 style={{
                   backgroundImage: chatSettings[selectedChat.id]?.background ? `url(${chatSettings[selectedChat.id]?.background})` : undefined,
                   backgroundSize: 'cover',
