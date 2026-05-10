@@ -685,7 +685,8 @@ export default function App() {
     setIsTyping(true);
     const activeWorldBook = worldBooks.find(wb => wb.isActive);
     // 角色设定取 char.notes
-    const systemPrompt = `你是 ${latestChar.name}。${latestChar.notes || ''}${activeWorldBook ? `\n\n【世界背景/世界书】\n${activeWorldBook.content}` : ''}`;
+    const systemPrompt = `你是 ${latestChar.name}。${latestChar.notes || ''}${activeWorldBook ? `\n\n【世界背景/世界书】\n${activeWorldBook.content}` : ''}
+【系统提示】你可以根据语意使用 "|||" 分隔符来实现分句发送，从而形成多个气泡。例如："今天天气真好|||太阳很明媚|||风也不大"。请根据语意自然分句或分段使用这个功能，不要输出多余解释。`;
     
     // 获取当前聊天历史
     const currentChatHistory = messages.filter(m => m.charId === latestChar.id);
@@ -712,18 +713,17 @@ export default function App() {
       if (data.choices?.[0]?.message?.content) {
         const fullContent = data.choices[0].message.content;
         
-        // 解析多气泡格式: **内容1****内容2**
-        const bubbleMatches = fullContent.match(/\*\*(.*?)\*\*/g);
+        // 解析多气泡格式: 使用 ||| 作为分隔符
+        const parts = fullContent.split('|||').map((s: string) => s.trim()).filter(Boolean);
         
-        if (bubbleMatches && bubbleMatches.length > 0) {
+        if (parts.length > 1) {
           // 如果符合多气泡格式，则拆分发送
-          const newMsgs: Message[] = bubbleMatches.map((match: string) => {
-            const content = match.slice(2, -2); // 移除 ** 和 **
+          const newMsgs: Message[] = parts.map((content: string) => {
             return {
               id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
               charId: selectedChat.id,
               role: 'assistant',
-              content: content.trim(),
+              content: content,
               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             };
           });
@@ -744,7 +744,7 @@ export default function App() {
             id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, 
             charId: selectedChat.id,
             role: 'assistant', 
-            content: fullContent,
+            content: parts[0] || fullContent,
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           };
           setMessages(prev => [...prev, newMsg]);
