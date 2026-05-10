@@ -16,19 +16,21 @@ export default defineConfig(({mode}) => {
         injectRegister: null,
         includeAssets: ['icon.svg'],
         manifest: {
+          id: '/',
           name: 'cookie',
           short_name: 'cookie',
           description: 'cookie - Your Minimalist Space',
           theme_color: '#ffffff',
           background_color: '#ffffff',
           display: 'standalone',
-          start_url: '.',
+          orientation: 'portrait',
+          start_url: '/',
           icons: [
             {
               src: 'icon.svg',
               sizes: '512x512',
               type: 'image/svg+xml',
-              purpose: 'any maskable'
+              purpose: 'any'
             },
             {
               src: 'icon-192.png',
