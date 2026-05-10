@@ -7,7 +7,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
-    base: './', // 确保在 GitHub Pages 等子路径下资源路径正确
+    base: '/',
     plugins: [
       react(), 
       tailwindcss(),
@@ -16,15 +16,14 @@ export default defineConfig(({mode}) => {
         injectRegister: null,
         includeAssets: ['icon.svg'],
         manifest: {
-          id: '/',
           name: 'cookie',
           short_name: 'cookie',
           description: 'cookie - Your Minimalist Space',
           theme_color: '#ffffff',
           background_color: '#ffffff',
           display: 'standalone',
-          orientation: 'portrait',
           start_url: '/',
+          scope: '/',
           icons: [
             {
               src: 'icon.svg',

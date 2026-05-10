@@ -706,7 +706,7 @@ export default function App() {
 
     // 角色设定取 char.notes
     const systemPrompt = `你是 ${latestChar.name}。${latestChar.notes || ''}${activeWorldBook ? `\n\n【世界背景/世界书】\n${activeWorldBook.content}` : ''}
-${countRequire ? '【系统提示】' + countRequire : ''}`;
+【系统提示】你可以根据语意使用 "|||" 分隔符来实现分句发送，从而形成多个气泡。例如："今天天气真好|||太阳很明媚|||风也不大"。请根据语意自然分句或分段使用这个功能，不要输出多余解释。${countRequire ? ' ' + countRequire : ''}`;
     
     // 获取当前聊天历史
     const currentChatHistory = messages.filter(m => m.charId === latestChar.id);
@@ -733,30 +733,13 @@ ${countRequire ? '【系统提示】' + countRequire : ''}`;
       if (data.choices?.[0]?.message?.content) {
         const fullContent = data.choices[0].message.content;
         
-        // 按照标点符号和换行符分句，防止AI只回一句话
-        let initialParts = fullContent.replace(/([。！？.!?]+(?:”|"|'|’)?(?:[)\]】])?)\s*/g, "$1|~|").replace(/\n+/g, "|~|").split("|~|").map((s: string) => s.trim()).filter(Boolean);
-        
-        // 智能合并过短的片段，避免气泡过碎
-        const mergedParts: string[] = [];
-        let curr = '';
-        for (const p of initialParts) {
-            if (!curr) {
-                curr = p;
-            } else if (curr.length < 15 && (curr.length + p.length < 30)) {
-                curr += ' ' + p;
-            } else {
-                mergedParts.push(curr);
-                curr = p;
-            }
-        }
-        if (curr) mergedParts.push(curr);
-        
-        const parts = mergedParts;
+        // 解析多气泡格式: 使用 ||| 作为分隔符
+        const parts = fullContent.split('|||').map((s: string) => s.trim()).filter(Boolean);
 
         // 先关闭初次 loading 状态
         setIsTyping(false);
 
-        if (parts.length > 0) {
+        if (parts.length > 1) {
           // 如果符合多气泡格式，则顺序发送
           const sendPartsSequential = async () => {
             for (let i = 0; i < parts.length; i++) {
@@ -787,6 +770,24 @@ ${countRequire ? '【系统提示】' + countRequire : ''}`;
             }
           };
           await sendPartsSequential();
+        } else {
+          // 普通单气泡格式
+          const newMsg: Message = { 
+            id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, 
+            charId: selectedChat.id,
+            role: 'assistant', 
+            content: parts[0] || fullContent,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setMessages(prev => [...prev, newMsg]);
+
+          // 如果开启后台弹窗，发送通知
+          if (isPopupEnabled && Notification.permission === 'granted') {
+             new Notification(selectedChat.name, {
+               body: newMsg.content,
+               icon: selectedChat.avatar || 'https://via.placeholder.com/100'
+             });
+          }
         }
         
         // 记忆模块检查：检查是否需要进行总结
