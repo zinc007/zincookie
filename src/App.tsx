@@ -739,8 +739,8 @@ export default function App() {
         // 先关闭初次 loading 状态
         setIsTyping(false);
 
-        if (parts.length > 1) {
-          // 如果符合多气泡格式，则顺序发送
+        if (parts.length > 0) {
+          // 顺序发送（兼容多气泡和单气泡）
           const sendPartsSequential = async () => {
             for (let i = 0; i < parts.length; i++) {
               if (i > 0) {
@@ -770,24 +770,6 @@ export default function App() {
             }
           };
           await sendPartsSequential();
-        } else {
-          // 普通单气泡格式
-          const newMsg: Message = { 
-            id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`, 
-            charId: selectedChat.id,
-            role: 'assistant', 
-            content: parts[0] || fullContent,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          };
-          setMessages(prev => [...prev, newMsg]);
-
-          // 如果开启后台弹窗，发送通知
-          if (isPopupEnabled && Notification.permission === 'granted') {
-             new Notification(selectedChat.name, {
-               body: newMsg.content,
-               icon: selectedChat.avatar || 'https://via.placeholder.com/100'
-             });
-          }
         }
         
         // 记忆模块检查：检查是否需要进行总结
@@ -817,7 +799,7 @@ export default function App() {
   };
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-white text-black font-sans overflow-hidden">
+    <div className="flex flex-col h-screen bg-white text-black font-sans overflow-hidden">
       {/* 全局注入背景 (针对某些预设) */}
       <div className="fixed inset-0 pointer-events-none z-[-1] bg-white transition-colors duration-500" />
 
