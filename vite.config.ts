@@ -7,13 +7,13 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
-    base: '/', // Change base to / for PWA compatibility
+    base: './', // 确保在 GitHub Pages 等子路径下资源路径正确
     plugins: [
       react(), 
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        injectRegister: 'auto',
+        injectRegister: null,
         includeAssets: ['icon.svg'],
         manifest: {
           name: 'cookie',
@@ -23,7 +23,6 @@ export default defineConfig(({mode}) => {
           background_color: '#ffffff',
           display: 'standalone',
           start_url: '.',
-          scope: '/',
           icons: [
             {
               src: 'icon.svg',
@@ -35,9 +34,6 @@ export default defineConfig(({mode}) => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg}']
-        },
-        devOptions: {
-          enabled: true
         }
       })
     ],
