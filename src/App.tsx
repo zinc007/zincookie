@@ -417,6 +417,18 @@ export default function App() {
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [isStickerPickerOpen, setIsStickerPickerOpen] = useState(false);
   const [isPopupEnabled, setIsPopupEnabled] = useState(() => localStorage.getItem('popup_enabled') === 'true');
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallPrompt(true);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
 
   // --- 下拉刷新模拟状态 ---
   const [pullDistance, setPullDistance] = useState(0);
@@ -1112,6 +1124,53 @@ export default function App() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Bottom Install Prompt for PWA */}
+      <AnimatePresence>
+        {showInstallPrompt && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-24 left-4 right-4 bg-zinc-900 text-white p-4 rounded-3xl shadow-2xl z-50 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
+                <svg width="24" height="24" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M256 80L310.5 190.5L431.5 208L344 293.5L364.5 414L256 357L147.5 414L168 293.5L80.5 208L201.5 190.5L256 80Z" fill="black"/>
+                </svg>
+              </div>
+              <div className="flex flex-col">
+                <span className="font-bold text-sm">将 Cookie 添加到主屏幕</span>
+                <span className="text-xs text-zinc-400">体验完整的沉浸式应用</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setShowInstallPrompt(false)}
+                className="p-2 text-zinc-400 hover:text-white"
+              >
+                取消
+              </button>
+              <button 
+                onClick={async () => {
+                  if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    if (outcome === 'accepted') {
+                      setDeferredPrompt(null);
+                      setShowInstallPrompt(false);
+                    }
+                  }
+                }}
+                className="bg-white text-zinc-900 px-4 py-2 rounded-xl text-xs font-bold"
+              >
+                安装
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 底部导航栏 */}
       <nav className="fixed bottom-0 left-0 right-0 h-20 bg-white/80 backdrop-blur-xl border-t border-gray-50 px-6 flex items-center justify-around pb-4 z-20">

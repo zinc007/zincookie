@@ -14,10 +14,11 @@ export default defineConfig(({mode}) => {
       VitePWA({
         registerType: 'autoUpdate',
         injectRegister: 'auto',
+        includeAssets: ['icon.svg'],
         manifest: {
-          name: 'Cookie',
-          short_name: 'Cookie',
-          description: 'Cookie - Your Minimalist Space',
+          name: 'cookie',
+          short_name: 'cookie',
+          description: 'cookie - Your Minimalist Space',
           theme_color: '#ffffff',
           background_color: '#ffffff',
           display: 'standalone',
@@ -31,6 +32,9 @@ export default defineConfig(({mode}) => {
               purpose: 'any maskable'
             }
           ]
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg}']
         }
       })
     ],
