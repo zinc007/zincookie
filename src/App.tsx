@@ -42,7 +42,8 @@ import {
   ChevronDown,
   Zap,
   Sparkles,
-  RotateCw
+  RotateCw,
+  Brain
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -580,6 +581,52 @@ export default function App() {
     setStickers([...stickers, ...newStickers]);
   };
 
+  const summarizeMemory = async (char: Character, history: any[]) => {
+    try {
+      if (!apiSettings.baseUrl || !apiSettings.apiKey) return;
+      const recentHistory = history.slice(-20).map(m => `${m.role}: ${m.content}`).join('\n');
+      const summarizePrompt = `你现在是一个用于总结角色记忆的辅助AI。\n请总结以下聊天记录中，提取出新的、重要的人物关系、事件、用户特征和角色特征。将这些信息合并为一段简洁精炼的记忆。\n\n【注意】\n直接返回总结后的文本，不要输出多余解释。\n如果没有实质性进展，则返回"NO_UPDATE"。\n\n【聊天记录】\n${recentHistory}`;
+      
+      const resp = await fetch(`${apiSettings.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiSettings.apiKey}` },
+        body: JSON.stringify({ 
+          model: apiSettings.model, 
+          messages: [{ role: 'system', content: summarizePrompt }], 
+          temperature: 0.3 
+        })
+      });
+      const data = await resp.json();
+      if (data.choices?.[0]?.message?.content) {
+        const summary = data.choices[0].message.content.trim();
+        if (summary && summary !== 'NO_UPDATE') {
+          // 如果原来的设定里没有包含这段总结，就追加进去
+          setCharacters(prev => prev.map(c => {
+            if (c.id === char.id) {
+              const oldNotes = c.notes || '';
+              // 简单防重：如果不包含则追加
+              if (!oldNotes.includes(summary)) {
+                const newNotes = oldNotes ? `${oldNotes}\n\n【记忆片段】\n${summary}` : `【记忆片段】\n${summary}`;
+                return { ...c, notes: newNotes };
+              }
+            }
+            return c;
+          }));
+          // 追加系统通知
+          setMessages(prev => [...prev, {
+            id: `system-memory-${Date.now()}`,
+            charId: char.id,
+            role: 'system',
+            content: `💡 记忆模块：已自动总结并更新角色设定。`,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }]);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to summarize memory:', e);
+    }
+  };
+
   const handleSendMessage = async (triggerAi: boolean = false) => {
     if (!selectedChat || isTyping) return;
     
@@ -708,6 +755,19 @@ export default function App() {
                body: newMsg.content,
                icon: selectedChat.avatar || 'https://via.placeholder.com/100'
              });
+          }
+        }
+        
+        // 记忆模块检查：检查是否需要进行总结
+        const summaryInterval = chatSettings[latestChar.id]?.summaryInterval;
+        if (summaryInterval && summaryInterval > 0) {
+          // 当前历史长度（包含新回复）
+          const updatedHistory = [...latestHistory, { role: 'assistant', content: fullContent }];
+          const userMsgCount = updatedHistory.filter(m => m.role === 'user').length;
+          
+          if (userMsgCount > 0 && userMsgCount % summaryInterval === 0) {
+            // 触发总结
+            setTimeout(() => summarizeMemory(latestChar, updatedHistory), 1000);
           }
         }
       }
@@ -1059,22 +1119,24 @@ export default function App() {
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className="fixed inset-0 bg-white z-[60] flex flex-col pt-[env(safe-area-inset-top)]"
             >
-              {/* 聊天顶栏 - 使用 fixed 并置于最高层级，适配 iOS 安全区域 */}
-              <div className="fixed top-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-md border-b border-gray-100 z-[110] flex items-center justify-between px-6 pt-[env(safe-area-inset-top)]">
-                <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400">
-                  <ArrowLeft size={20} />
-                </button>
-                <div className="flex flex-col items-center">
-                  <span className="font-bold text-zinc-900 text-sm tracking-tight">{chatSettings[selectedChat.id]?.nickname || selectedChat.name}</span>
-                  <span className="text-[9px] text-emerald-500 font-black flex items-center gap-1 uppercase tracking-widest">• Online</span>
+              {/* 聊天顶栏 - 固定在 flex-col 顶部 */}
+              {!isChatSettingsOpen && (
+                <div className="flex-none h-16 bg-white/95 backdrop-blur-md border-b border-gray-100 z-[50] flex items-center justify-between px-6 pt-[env(safe-area-inset-top)] relative">
+                  <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400 -ml-2">
+                    <ArrowLeft size={20} />
+                  </button>
+                  <div className="flex flex-col items-center">
+                    <span className="font-bold text-zinc-900 text-sm tracking-tight shadow-sm">{chatSettings[selectedChat.id]?.nickname || selectedChat.name}</span>
+                    <span className="text-[9px] text-emerald-500 font-black flex items-center gap-1 uppercase tracking-widest drop-shadow-sm">• Online</span>
+                  </div>
+                  <button 
+                    onClick={() => setIsChatSettingsOpen(true)}
+                    className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400 -mr-2"
+                  >
+                    <Settings2 size={20} />
+                  </button>
                 </div>
-                <button 
-                  onClick={() => setIsChatSettingsOpen(true)}
-                  className="p-2 hover:bg-gray-50 rounded-full transition-colors text-zinc-400"
-                >
-                  <Settings2 size={20} />
-                </button>
-              </div>
+              )}
 
               <ChatSettingsModal 
                 char={selectedChat} 
@@ -1086,11 +1148,10 @@ export default function App() {
                 setCharacters={setCharacters}
               />
 
-              {/* 消息区域 - 动态计算顶部内边距以适配 fixed 顶栏和安全区域 */}
+              {/* 消息区域 */}
               <div 
                 className="flex-1 overflow-y-auto px-3 pb-10 space-y-6 bg-zinc-50/50 relative"
                 style={{
-                  paddingTop: `calc(4rem + env(safe-area-inset-top))`,
                   backgroundImage: chatSettings[selectedChat.id]?.background ? `url(${chatSettings[selectedChat.id]?.background})` : undefined,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center'
@@ -1163,6 +1224,21 @@ export default function App() {
                 };
 
                 const glassClass = settings.frostedGlass ? 'backdrop-blur-md bg-opacity-70' : '';
+
+                if (msg.role === 'system') {
+                  return (
+                    <motion.div 
+                      key={msg.id} 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex justify-center my-4 pointer-events-none"
+                    >
+                      <div className="bg-zinc-200/50 text-zinc-500 px-4 py-2 rounded-full text-[10px] font-bold tracking-widest uppercase backdrop-blur-md">
+                        {msg.content}
+                      </div>
+                    </motion.div>
+                  );
+                }
 
                 return (
                   <motion.div 
@@ -1255,7 +1331,7 @@ export default function App() {
                               setPostDetailReturnChatId(selectedChat!.id);
                               setSelectedPostId(msg.postForward!.id);
                             }}
-                            className={`w-[60%] aspect-[4/2] bg-white border border-zinc-100 rounded-2xl p-4 flex flex-col justify-between cursor-pointer hover:bg-zinc-50 transition-all active:scale-[0.98] relative ${msg.role === 'user' ? 'ml-auto' : 'mr-auto'}`}
+                            className={`w-2/3 aspect-[4/2] bg-white border border-zinc-100 rounded-2xl p-4 flex flex-col justify-between cursor-pointer hover:bg-zinc-50 transition-all active:scale-[0.98] relative ${msg.role === 'user' ? 'ml-auto' : 'mr-auto'}`}
                           >
                             <div className="flex items-center gap-2 border-b border-zinc-50 pb-2">
                               <div className="w-5 h-5 rounded-md bg-zinc-900 flex items-center justify-center text-[8px] font-black text-white shrink-0">
@@ -1744,6 +1820,9 @@ export default function App() {
                               <button 
                                 onClick={() => {
                                   if (!isPopupEnabled) {
+                                    if (window.self !== window.top) {
+                                      alert("系统提示：当前应用处于预览模式中，浏览器安全策略限制了真实的通知弹窗（Notification API在跨域iframe中不可用）。\n\n请在右上方点击「Open App」或在新标签页中打开本应用，以获得真实的系统推送权限！");
+                                    }
                                     Notification.requestPermission().then(permission => {
                                       if (permission === 'granted') {
                                         setIsPopupEnabled(true);
@@ -1774,7 +1853,11 @@ export default function App() {
                                      icon: userProfile.avatar || 'https://via.placeholder.com/100'
                                    });
                                  } else {
-                                   alert('请先开启开关并授予权限。');
+                                   if (window.self !== window.top) {
+                                     alert("要在预览模式下看到真实的浏览器通知，请点击右上角「在新标签页中打开」！");
+                                   } else {
+                                     alert('请先开启开关并授予权限。');
+                                   }
                                  }
                                }}
                                className="w-full py-4 bg-white border border-zinc-200 rounded-2xl flex items-center justify-center gap-3 transition-colors active:scale-95"
@@ -2205,6 +2288,68 @@ function ChatSettingsModal({ char, settings, setChatSettings, isOpen, onClose, I
                   onChange={e => setLocalSettings({...localSettings, prompt: e.target.value})} 
                   className="w-full h-32 bg-zinc-50 rounded-2xl p-4 text-xs font-medium border-none focus:ring-1 focus:ring-zinc-900 leading-relaxed" 
                 />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 聊天功能 */}
+        <div className="border border-zinc-100 rounded-[2rem] overflow-hidden bg-white">
+          <button 
+            onClick={() => toggleSection('functions')}
+            className="w-full px-6 py-5 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Zap size={18} className="text-zinc-400" />
+              <span className="text-sm font-black uppercase tracking-wider">聊天功能</span>
+            </div>
+            {expandedSections.includes('functions') ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </button>
+          
+          {expandedSections.includes('functions') && (
+            <div className="px-6 pb-6 space-y-8 pt-2 animate-in slide-in-from-top-4">
+              <div className="space-y-4">
+                <span className="text-[10px] font-black text-zinc-800 uppercase tracking-widest pl-1">角色单次回复对话条数</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[9px] text-zinc-400 font-bold ml-1">最少 (Min)</span>
+                    <input 
+                      type="number" 
+                      value={localSettings.minResponses || 1} 
+                      onChange={e => setLocalSettings({...localSettings, minResponses: parseInt(e.target.value) || 1})}
+                      className="w-full bg-zinc-50 border-none rounded-xl p-3 text-xs font-bold focus:ring-1 focus:ring-zinc-900" 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[9px] text-zinc-400 font-bold ml-1">最多 (Max)</span>
+                    <input 
+                      type="number" 
+                      value={localSettings.maxResponses || 1} 
+                      onChange={e => setLocalSettings({...localSettings, maxResponses: parseInt(e.target.value) || 1})}
+                      className="w-full bg-zinc-50 border-none rounded-xl p-3 text-xs font-bold focus:ring-1 focus:ring-zinc-900" 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4 border-t border-zinc-50 pt-4">
+                <div className="flex items-center justify-between px-1 mb-2">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black text-zinc-800 uppercase tracking-widest flex items-center gap-1"><Brain size={12}/>记忆模块 (Memory)</span>
+                    <p className="text-[9px] text-zinc-400 mt-1">设为留空或0则关闭自动总结</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-zinc-400">每发生</span>
+                  <input 
+                    type="number" 
+                    placeholder="不限"
+                    value={localSettings.summaryInterval || ''} 
+                    onChange={e => setLocalSettings({...localSettings, summaryInterval: e.target.value ? parseInt(e.target.value) : ''})}
+                    className="flex-1 bg-zinc-50 border-none rounded-xl p-2 text-xs font-bold text-center focus:ring-1 focus:ring-zinc-900" 
+                  />
+                  <span className="text-[10px] font-bold text-zinc-400">条消息总结一次并保存为角色记忆</span>
+                </div>
               </div>
             </div>
           )}
