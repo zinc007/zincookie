@@ -716,28 +716,40 @@ export default function App() {
         // 解析多气泡格式: 使用 ||| 作为分隔符
         const parts = fullContent.split('|||').map((s: string) => s.trim()).filter(Boolean);
         
+        // 先关闭初次 loading 状态
+        setIsTyping(false);
+
         if (parts.length > 1) {
-          // 如果符合多气泡格式，则拆分发送
-          const newMsgs: Message[] = parts.map((content: string) => {
-            return {
-              id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
-              charId: selectedChat.id,
-              role: 'assistant',
-              content: content,
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            };
-          });
-          setMessages(prev => [...prev, ...newMsgs]);
-          
-          // 如果开启后台弹窗，分条发送通知
-          if (isPopupEnabled && Notification.permission === 'granted') {
-            newMsgs.forEach(msg => {
-               new Notification(selectedChat.name, {
-                 body: msg.content,
-                 icon: selectedChat.avatar || 'https://via.placeholder.com/100'
-               });
-            });
-          }
+          // 如果符合多气泡格式，则顺序发送
+          const sendPartsSequential = async () => {
+            for (let i = 0; i < parts.length; i++) {
+              if (i > 0) {
+                setIsTyping(true);
+                // 模拟处理/打字延迟
+                await new Promise(r => setTimeout(r, 1000 + Math.random() * 500));
+                setIsTyping(false);
+              }
+              
+              const newMsg: Message = {
+                id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+                charId: selectedChat.id,
+                role: 'assistant',
+                content: parts[i],
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              };
+              
+              setMessages(prev => [...prev, newMsg]);
+              
+              // 如果开启后台弹窗，发送通知
+              if (isPopupEnabled && Notification.permission === 'granted') {
+                 new Notification(selectedChat.name, {
+                   body: newMsg.content,
+                   icon: selectedChat.avatar || 'https://via.placeholder.com/100'
+                 });
+              }
+            }
+          };
+          await sendPartsSequential();
         } else {
           // 普通单气泡格式
           const newMsg: Message = { 

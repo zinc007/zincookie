@@ -9,20 +9,12 @@
     <meta name="application-name" content="Cookie" />
     <meta name="msapplication-TileColor" content="#ffffff" />
     <meta name="theme-color" content="#ffffff" />
-    <link rel="manifest" href="/manifest.json?v=5" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <title>cookie</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js');
-        });
-      }
-    </script>
   </body>
 </html>
 
