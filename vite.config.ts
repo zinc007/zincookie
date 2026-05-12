@@ -7,7 +7,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
-    base: './',
+    base: '/',
     plugins: [
       react(), 
       tailwindcss(),
@@ -16,7 +16,7 @@ export default defineConfig(({mode}) => {
         injectRegister: 'auto',
         includeAssets: ['icon.svg', 'icon-192.png', 'icon-512.png'],
         manifest: {
-          id: './',
+          id: '/',
           name: 'Cookie',
           short_name: 'Cookie',
           description: 'Cookie - Your Minimalist Space',
@@ -24,8 +24,8 @@ export default defineConfig(({mode}) => {
           background_color: '#ffffff',
           display: 'standalone',
           orientation: 'portrait',
-          start_url: './',
-          scope: './',
+          start_url: '/',
+          scope: '/',
           icons: [
             {
               src: 'icon-192.png',

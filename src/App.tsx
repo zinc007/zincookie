@@ -626,7 +626,7 @@ export default function App() {
           }));
           // 追加系统通知
           setMessages(prev => [...prev, {
-            id: `system-memory-${Date.now()}`,
+            id: `system-memory-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
             charId: char.id,
             role: 'system',
             content: `💡 记忆模块：已自动总结并更新角色设定。`,
@@ -780,7 +780,7 @@ export default function App() {
               }
               
               const newMsg: Message = {
-                id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+                id: `${Date.now()}-${i}-${Math.random().toString(36).substring(2, 11)}`,
                 charId: selectedChat.id,
                 role: 'assistant',
                 content: parts[i],
@@ -1171,7 +1171,9 @@ export default function App() {
               >
                 取消
               </button>
-              <button 
+            {deferredPrompt && (
+              <motion.button 
+                key="install-action"
                 onClick={async () => {
                   if (deferredPrompt) {
                     deferredPrompt.prompt();
@@ -1185,7 +1187,8 @@ export default function App() {
                 className="bg-white text-zinc-900 px-4 py-2 rounded-xl text-xs font-bold"
               >
                 安装
-              </button>
+              </motion.button>
+            )}
             </div>
           </motion.div>
         )}
@@ -1202,6 +1205,7 @@ export default function App() {
       <AnimatePresence>
         {selectedChat && (
             <motion.div 
+              key="chat-window"
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
@@ -1485,6 +1489,7 @@ export default function App() {
               <AnimatePresence>
                 {(quotedMessage || editingMessageId || isMultiSelectMode) && (
                   <motion.div 
+                    key="input-overlay"
                     initial={{ y: 20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: 20, opacity: 0 }}
@@ -2033,8 +2038,8 @@ export default function App() {
                                   value={apiSettings.model}
                                   onChange={e => setApiSettings({...apiSettings, model: e.target.value})}
                                 >
-                                  <option value="gpt-4o">gpt-4o</option>
-                                  {availableModels.map(m => <option key={m} value={m}>{m}</option>)}
+                                  <option key="default-gpt" value="gpt-4o">gpt-4o</option>
+                                  {availableModels.filter(m => m !== 'gpt-4o').map(m => <option key={`model-${m}`} value={m}>{m}</option>)}
                                 </select>
                               </div>
                               <button 
