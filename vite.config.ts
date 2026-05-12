@@ -16,7 +16,7 @@ export default defineConfig(({mode}) => {
         injectRegister: 'auto',
         includeAssets: ['icon.svg', 'icon-192.png', 'icon-512.png'],
         manifest: {
-          id: './',
+          id: 'cookie-pwa-app',
           name: 'Cookie',
           short_name: 'Cookie',
           description: 'Cookie - Your Minimalist Space',
